@@ -72,6 +72,10 @@ async def favicon():
 for router in routers:
     fapi.include_router(router)
 
+# fieldstation42-live streaming endpoints (/live/...)
+from fs42_live.router import router as live_router
+fapi.include_router(live_router)
+
 
 def _mount_static():
 

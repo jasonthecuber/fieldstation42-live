@@ -121,12 +121,20 @@ Extend the upstream web console instead of building a new one:
 | | Milestone | Done when |
 |---|---|---|
 | M0 | Baseline: stock FS42 in a container, Miami Vice station, catalog + schedule built | Web console shows a correct schedule |
-| M1 | One channel streaming (`/live/stream/{ch}.ts`) | Plays in VLC on the Windows PC across a segment boundary |
-| M2 | M3U + XMLTV, fan-out, on-demand lifecycle, Quick Sync | Channel and guide data in Jellyfin; plays on Roku and over Tailscale |
+| M1 | One channel streaming (`/live/stream/{ch}.ts`) | Plays in VLC on the Windows PC across a segment boundary (done) |
+| M2 | M3U + XMLTV, fan-out, on-demand lifecycle, Quick Sync, gapless segment switches | Channel and guide data in Jellyfin; plays on Roku and over Tailscale |
 | M3 | Guide channel as a stream | Retro guide playable in Jellyfin |
 | M4 | Weather channel | WS4KP forecast with music playable in Jellyfin |
 | M5 | Live page in the control panel + packaging | A fresh Beelink is set up from the compose file + script |
 | M6 | Content rotation, commercials import pipeline | |
+| M7 | Natural break points: scan episodes for fade-to-black + silence (ffmpeg `blackdetect`/`silencedetect`) and schedule commercial breaks there | Breaks land on the show's own act breaks |
+
+## Known gaps
+
+- Segment switches leave a ~0.5 s timestamp gap (ffmpeg start-up for the next
+  segment). Players hold the last frame briefly. M2 fixes it by starting the next
+  segment's encoder about a second early.
+- Each viewer gets its own encoders until M2's fan-out.
 
 ## Open questions
 
