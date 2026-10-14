@@ -1,0 +1,56 @@
+{"station_conf": {
+    "network_name": "MiamiVice",
+    "network_long_name": "Miami Vice 24/7",
+    "channel_number": 12,
+    "network_type": "standard",
+
+    "schedule_increment": 60,
+    "break_strategy": "standard",
+    "commercial_free": false,
+    "break_duration": 120,
+
+    "content_dir": "catalog/miami_vice",
+    "commercial_dir": "commercial",
+    "bump_dir": "bump",
+
+    "sign_off_video": "runtime/signoff.mp4",
+    "off_air_video": "runtime/off_air_pattern.mp4",
+    "standby_image": "runtime/standby.png",
+    "be_right_back_media": "runtime/brb.png",
+
+    "day_templates": {
+        "daily": {
+            "0":  {"tags": "miamivice", "sequence": "vice"},
+            "1":  {"tags": "miamivice", "sequence": "vice"},
+            "2":  {"tags": "miamivice", "sequence": "vice"},
+            "3":  {"tags": "miamivice", "sequence": "vice"},
+            "4":  {"tags": "miamivice", "sequence": "vice"},
+            "5":  {"tags": "miamivice", "sequence": "vice"},
+            "6":  {"tags": "miamivice", "sequence": "vice"},
+            "7":  {"tags": "miamivice", "sequence": "vice"},
+            "8":  {"tags": "miamivice", "sequence": "vice"},
+            "9":  {"tags": "miamivice", "sequence": "vice"},
+            "10": {"tags": "miamivice", "sequence": "vice"},
+            "11": {"tags": "miamivice", "sequence": "vice"},
+            "12": {"tags": "miamivice", "sequence": "vice"},
+            "13": {"tags": "miamivice", "sequence": "vice"},
+            "14": {"tags": "miamivice", "sequence": "vice"},
+            "15": {"tags": "miamivice", "sequence": "vice"},
+            "16": {"tags": "miamivice", "sequence": "vice"},
+            "17": {"tags": "miamivice", "sequence": "vice"},
+            "18": {"tags": "miamivice", "sequence": "vice"},
+            "19": {"tags": "miamivice", "sequence": "vice"},
+            "20": {"tags": "miamivice", "sequence": "vice"},
+            "21": {"tags": "miamivice", "sequence": "vice"},
+            "22": {"tags": "miamivice", "sequence": "vice"},
+            "23": {"tags": "miamivice", "sequence": "vice"}
+        }
+    },
+    "monday": "daily",
+    "tuesday": "daily",
+    "wednesday": "daily",
+    "thursday": "daily",
+    "friday": "daily",
+    "saturday": "daily",
+    "sunday": "daily"
+}}
