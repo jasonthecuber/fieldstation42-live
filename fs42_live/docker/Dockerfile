@@ -6,8 +6,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     HOME=/tmp
 
-RUN apt-get update \
+# intel-media-va-driver-non-free (Debian non-free) is the Quick Sync driver for
+# VAAPI encoding on recent Intel GPUs such as the N100; vainfo is for diagnosing it
+RUN sed -i "s/^Components: main$/Components: main non-free non-free-firmware/" /etc/apt/sources.list.d/debian.sources \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core tzdata \
+       intel-media-va-driver-non-free vainfo \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

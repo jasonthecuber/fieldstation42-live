@@ -13,25 +13,29 @@ class OutputProfile:
     audio_bitrate: str = "128k"
     audio_rate: int = 48000
 
-    def video_filter(self):
+    def video_filter(self, hw=False):
         # Square the pixels first (DVD rips are often anamorphic), then fit inside the
-        # frame: widescreen gets letterboxed, 4:3 fills it with no bars.
+        # frame: widescreen gets letterboxed, 4:3 fills it with no bars. The scaling stays
+        # on the CPU either way; with hw the frames are then handed to the GPU encoder.
         w, h = self.width, self.height
         return (
             "scale=trunc(iw*sar/2)*2:ih,setsar=1,"
             f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
-            f"fps={self.fps},format=yuv420p"
+            f"fps={self.fps}," + ("format=nv12,hwupload" if hw else "format=yuv420p")
         )
 
-    def encode_args(self):
+    def encode_args(self, hw=False):
         gop = 60  # ~2 s, so a new viewer never waits long for a keyframe
+        if hw:
+            video = ["-c:v", "h264_vaapi", "-bf", "0"]
+        else:
+            video = ["-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
+                     "-keyint_min", str(gop), "-sc_threshold", "0"]
         return [
-            "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
-            "-profile:v", "main",
+            *video, "-profile:v", "main",
             "-b:v", self.video_bitrate, "-maxrate", self.video_maxrate,
-            "-bufsize", self.video_maxrate,
-            "-g", str(gop), "-keyint_min", str(gop), "-sc_threshold", "0",
+            "-bufsize", self.video_maxrate, "-g", str(gop),
             "-c:a", "aac", "-b:a", self.audio_bitrate,
             "-ar", str(self.audio_rate), "-ac", "2",
         ]

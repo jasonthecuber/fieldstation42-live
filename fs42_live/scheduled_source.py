@@ -7,6 +7,7 @@ from asyncio.subprocess import DEVNULL, PIPE
 from dataclasses import dataclass
 
 from fs42.liquid_manager import LiquidManager
+from fs42_live import hwaccel
 from fs42_live.profile import RETRO
 
 _l = logging.getLogger("FS42LIVE")
@@ -163,15 +164,16 @@ class ScheduledSource:
             video_in = ["-ss", f"{seg.start:.3f}", "-i", seg.path]
             has_audio = await self._has_audio(seg.path)
 
+        hw = await asyncio.to_thread(hwaccel.vaapi)
         _l.info(f"{self.network}: {seg.path} from {seg.start:.1f}s for {seg.duration:.1f}s")
         proc = await self._spawn(
             os.path.basename(seg.path or "slate"),
-            "-re", *video_in,
+            *hwaccel.input_args(), "-re", *video_in,
             "-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo",
             "-map", "0:v:0", "-map", "0:a:0" if has_audio else "1:a",
             "-t", f"{seg.duration:.3f}", "-shortest",
-            "-vf", p.video_filter(), "-af", "aresample=async=1",
-            *p.encode_args(),
+            "-vf", p.video_filter(hw), "-af", "aresample=async=1",
+            *p.encode_args(hw),
             "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
         )
         while chunk := await proc.stdout.read(CHUNK):

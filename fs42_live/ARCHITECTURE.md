@@ -131,8 +131,10 @@ Extend the upstream web console instead of building a new one:
 
 ## Known gaps
 
-- A viewer who joins a running channel starts mid-GOP, so up to 2 s of video can't
-  be decoded until the next keyframe.
+- Schedules aren't extended automatically yet; when one runs out the channel shows
+  the standby slate.
+- Only scaling is on the CPU-side with Quick Sync; decoding the source stays on the
+  CPU too (about 0.1 core per channel on the N100).
 
 ## Open questions
 

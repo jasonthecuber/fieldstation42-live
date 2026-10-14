@@ -8,6 +8,12 @@ services:
     image: fs42-live:dev
     container_name: fs42-live
     user: "${FS42_UID:?set in .env}:${FS42_GID:?set in .env}"
+    # Intel Quick Sync for encoding; the stream falls back to the CPU if it doesn't work
+    devices:
+      - /dev/dri:/dev/dri
+    group_add:
+      - "${RENDER_GID:-991}"
+      - "${VIDEO_GID:-44}"
     environment:
       # Schedules are built in local wall-clock time, so this must be the viewers'
       # time zone, not the host's (servers often run in UTC)
