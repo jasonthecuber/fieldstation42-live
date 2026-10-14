@@ -131,10 +131,8 @@ Extend the upstream web console instead of building a new one:
 
 ## Known gaps
 
-- Segment switches leave a ~0.5 s timestamp gap (ffmpeg start-up for the next
-  segment). Players hold the last frame briefly. M2 fixes it by starting the next
-  segment's encoder about a second early.
-- Each viewer gets its own encoders until M2's fan-out.
+- A viewer who joins a running channel starts mid-GOP, so up to 2 s of video can't
+  be decoded until the next keyframe.
 
 ## Open questions
 

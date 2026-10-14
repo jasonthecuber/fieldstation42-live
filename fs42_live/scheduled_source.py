@@ -12,8 +12,13 @@ from fs42_live.profile import RETRO
 _l = logging.getLogger("FS42LIVE")
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
-MIN_SEGMENT = 1.0  # shorter leftovers are waited out rather than spinning up an encoder
+LEAD = 1.5  # each encode starts this long before its slot, hiding ffmpeg start-up
+MIN_SEGMENT = 0.1  # slivers shorter than this are skipped
+MIN_FALLBACK = 1.0  # a failed encode with less than this left isn't worth a slate
 SLATE_SECONDS = 10.0  # how long the standby slate runs before asking the schedule again
+RESYNC = 5.0  # if planning falls this far behind the wall clock, jump forward
+STARTUP = 0.5  # rough ffmpeg start-up time, used to estimate how much a failed encode produced
+NUDGE = datetime.timedelta(milliseconds=1)  # at exactly a block's end the schedule has no answer
 CHUNK = 64 * 1024
 
 
@@ -27,11 +32,12 @@ class Segment:
 class ScheduledSource:
     """One live MPEG-TS stream for a scheduled (standard) station.
 
-    For each segment it asks the schedule what is on now and runs one real-time ffmpeg
-    encode of the rest of it. Re-asking at every boundary keeps the stream on the wall
-    clock, so ffmpeg start-up time never accumulates as drift. The segments are stamped
-    with wall-clock PTS offsets and fed through a long-lived copy remux, so the viewer
-    sees a single stream with continuous timestamps and continuity counters.
+    Segments are planned back to back on the schedule's own clock: each one starts where
+    the last ended, both in schedule time and in stream timestamps, so the output has no
+    gaps. Each segment is its own real-time ffmpeg encode, started LEAD seconds before
+    its slot so it is already producing when the previous one finishes. The encodes are
+    fed through a long-lived copy remux, so the viewer sees a single stream with
+    continuous continuity counters.
     """
 
     _audio_cache = {}
@@ -41,6 +47,7 @@ class ScheduledSource:
         self.network = station_conf["network_name"]
         self.profile = profile
         self._procs = set()
+        self._tasks = set()
 
     async def stream(self):
         """Yield MPEG-TS bytes for as long as the caller keeps reading."""
@@ -58,36 +65,57 @@ class ScheduledSource:
                 yield chunk
         finally:
             feeder.cancel()
+            for task in self._tasks:
+                task.cancel()
             for proc in self._procs:
                 if proc.returncode is None:
                     proc.kill()
             _l.info(f"{self.network}: stream stopped")
 
     async def _feed(self, sink):
-        start = time.monotonic()
+        """Write the planned encodes into the sink, one after another."""
+        encodes = asyncio.Queue(maxsize=1)  # holds the next encode while the current one plays
+        self._start(self._plan(encodes))
         try:
-            while True:
-                seg = await asyncio.to_thread(self._next_segment)
-                if seg.duration < MIN_SEGMENT:
-                    await asyncio.sleep(seg.duration)
-                    continue
-                began = time.monotonic()
-                if not await self._encode(seg, began - start, sink):
-                    # a broken file must not turn into a tight retry loop on the same play point
-                    left = seg.duration - (time.monotonic() - began)
-                    if left >= MIN_SEGMENT:
-                        slate = self._slate(min(left, SLATE_SECONDS))
-                        await self._encode(slate, time.monotonic() - start, sink)
+            while (out := await encodes.get()) is not None:
+                while (chunk := await out.get()) is not None:
+                    sink.write(chunk)
+                    await sink.drain()
         except asyncio.CancelledError:
             raise
         except Exception:
-            _l.exception(f"{self.network}: stream feeder failed")
+            _l.exception(f"{self.network}: stream writer failed")
         finally:
             sink.close()  # ends the remux, which ends the response
 
-    def _next_segment(self):
+    async def _plan(self, encodes):
+        when = datetime.datetime.now()  # schedule time the next segment starts at
+        pts = 0.0  # stream time it starts at
         try:
-            pp = LiquidManager().get_play_point(self.network, datetime.datetime.now())
+            while True:
+                behind = (datetime.datetime.now() - when).total_seconds()
+                if behind > RESYNC:
+                    _l.warning(f"{self.network}: {behind:.1f}s behind schedule; skipping ahead")
+                    when = datetime.datetime.now()
+                seg = await asyncio.to_thread(self._segment_at, when)
+                if seg.duration >= MIN_SEGMENT:
+                    wait = (when - datetime.datetime.now()).total_seconds() - LEAD
+                    if wait > 0:
+                        await asyncio.sleep(wait)
+                    out = asyncio.Queue()  # holds at most about LEAD seconds of output
+                    self._start(self._encode(seg, pts, out))
+                    await encodes.put(out)
+                when += datetime.timedelta(seconds=seg.duration)
+                pts += seg.duration
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _l.exception(f"{self.network}: stream planner failed")
+            await encodes.put(None)
+
+    def _segment_at(self, when):
+        try:
+            pp = LiquidManager().get_play_point(self.network, when + NUDGE)
         except Exception as e:  # no schedule built, or it has run out
             _l.warning(f"{self.network}: no play point ({e}); showing standby")
             pp = None
@@ -97,14 +125,33 @@ class ScheduledSource:
         if entry.is_stream:
             _l.warning(f"{self.network}: stream entries are not supported yet; showing standby")
             return self._slate(SLATE_SECONDS)
-        return Segment(entry.path, entry.skip + pp.offset, entry.duration - pp.offset)
+        offset = max(0.0, pp.offset - NUDGE.total_seconds())
+        return Segment(entry.path, entry.skip + offset, entry.duration - offset)
 
     def _slate(self, seconds):
         image = self.station.get("standby_image", "runtime/standby.png")
         return Segment(image if os.path.exists(image) else None, 0, seconds)
 
-    async def _encode(self, seg, pts_offset, sink):
-        """Encode one segment into the sink. Returns False if ffmpeg failed."""
+    async def _encode(self, seg, pts, out):
+        """Encode one segment into out, falling back to the slate if ffmpeg fails."""
+        try:
+            began = time.monotonic()
+            if await self._run_encode(seg, pts, out):
+                return
+            # a broken file must not leave a hole, or the stream stalls until the next slot
+            done = max(0.0, time.monotonic() - began - STARTUP)
+            left = seg.duration - done
+            if left >= MIN_FALLBACK:
+                await self._run_encode(self._slate(min(left, seg.duration)), pts + done, out)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _l.exception(f"{self.network}: encode of {seg.path} failed")
+        finally:
+            out.put_nowait(None)
+
+    async def _run_encode(self, seg, pts, out):
+        """Returns False if ffmpeg failed."""
         p = self.profile
         if seg.path is None:
             video_in = ["-f", "lavfi", "-i", f"color=c=black:s={p.width}x{p.height}:r={p.fps}"]
@@ -125,11 +172,10 @@ class ScheduledSource:
             "-t", f"{seg.duration:.3f}", "-shortest",
             "-vf", p.video_filter(), "-af", "aresample=async=1",
             *p.encode_args(),
-            "-f", "mpegts", "-output_ts_offset", f"{pts_offset:.3f}", "pipe:1",
+            "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
         )
         while chunk := await proc.stdout.read(CHUNK):
-            sink.write(chunk)
-            await sink.drain()
+            out.put_nowait(chunk)
         return await proc.wait() == 0
 
     async def _has_audio(self, path):
@@ -142,6 +188,11 @@ class ScheduledSource:
             out, _ = await proc.communicate()
             self._audio_cache[path] = bool(out.strip())
         return self._audio_cache[path]
+
+    def _start(self, coro):
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _spawn(self, tag, *args, stdin=DEVNULL):
         proc = await asyncio.create_subprocess_exec(
