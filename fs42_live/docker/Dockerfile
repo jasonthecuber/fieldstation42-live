@@ -7,7 +7,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     HOME=/tmp
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
