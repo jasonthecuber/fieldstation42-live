@@ -2,10 +2,10 @@ import asyncio
 import logging
 
 from fs42_live.scheduled_source import ScheduledSource
+from fs42_live.ts import PACKET as TS_PACKET, GopCache
 
 _l = logging.getLogger("FS42LIVE")
 
-TS_PACKET = 188
 IDLE_GRACE = 30.0  # keep an unwatched channel running this long (channel flips, Jellyfin re-probes)
 VIEWER_BACKLOG = 256  # chunks (~16 MB, over a minute of video); a viewer further behind is dropped
 
@@ -18,6 +18,7 @@ class _Channel:
         self.viewers = set()
         self.closed = False
         self._idle = None
+        self._gop = GopCache()
         self._task = asyncio.create_task(self._run(ScheduledSource(station)))
 
     def join(self):
@@ -25,6 +26,8 @@ class _Channel:
             self._idle.cancel()
             self._idle = None
         viewer = asyncio.Queue(maxsize=VIEWER_BACKLOG)
+        for chunk in self._gop.snapshot():  # start on the latest keyframe, right away
+            viewer.put_nowait(chunk)
         self.viewers.add(viewer)
         _l.info(f"{self.name}: viewer joined ({len(self.viewers)} watching)")
         return viewer
@@ -48,6 +51,7 @@ class _Channel:
                 data = carry + chunk
                 cut = len(data) - len(data) % TS_PACKET
                 data, carry = data[:cut], data[cut:]
+                self._gop.feed(data)
                 for viewer in list(self.viewers):
                     try:
                         viewer.put_nowait(data)
