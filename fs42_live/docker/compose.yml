@@ -1,0 +1,20 @@
+# Usage (from this directory):  cp .env.example .env  # then edit
+#                                docker compose up -d --build
+services:
+  fs42-live:
+    build:
+      context: ../..
+      dockerfile: fs42_live/docker/Dockerfile
+    image: fs42-live:dev
+    container_name: fs42-live
+    user: "${FS42_UID:?set in .env}:${FS42_GID:?set in .env}"
+    ports:
+      - "${FS42_PORT:-4242}:4242"
+    volumes:
+      - ${FS42_DATA:?set in .env}/confs:/app/confs
+      - ${FS42_DATA}/catalog:/app/catalog
+      - ${FS42_DATA}/runtime:/app/runtime
+      # Catalogs store absolute paths, so media is mounted at the same path as on the host
+      - ${MEDIA_ROOT:?set in .env}:${MEDIA_ROOT}:ro
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped

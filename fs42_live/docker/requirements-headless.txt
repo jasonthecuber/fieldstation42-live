@@ -1,0 +1,14 @@
+# install/requirements.in minus the desktop-only packages:
+#   PySide6 - upstream's local web-channel renderer (we render web pages with Chromium)
+#   evdev   - USB remote input on the local player
+#   moviepy - optional duration probe fallback (ffmpeg-python is primary)
+python-mpv-jsonipc
+pyserial
+rich
+textual
+ffmpeg-python
+fastapi
+uvicorn
+jsonschema
+requests
+mutagen
