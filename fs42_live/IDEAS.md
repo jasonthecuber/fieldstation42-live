@@ -54,3 +54,11 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   (ours) or randomly (Roku buffering).
 - **Skip missing files** "just in case": if a scheduled file was deleted, move to the next
   segment instead of showing the standby slate until the catalog watcher catches up.
+
+## Packaging for Noel
+
+- **Set up the whole box, not just fs42-live.** Noel's Beelink needs Jason's full stack
+  (Jellyfin, qBittorrent behind gluetun/NordVPN, homepage, filebrowser) as well. The setup
+  script should ask for the NordVPN WireGuard private key and write it to the stack's
+  `.env` (`NORDVPN_PRIVATE_KEY`), alongside USER_ID/GROUP_ID/TIMEZONE/STORAGE_ROOT.
+  Never commit the key.
