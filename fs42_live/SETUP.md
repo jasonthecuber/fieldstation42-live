@@ -107,6 +107,20 @@ Make a catalog folder with the videos (a symlink to wherever they live is fine),
 
 `live_captions` lists the clip folders that get captions. `live_titles` names the clip show in the guides; otherwise they show the folder name. After renaming or adding videos, rebuild the station's catalog and schedule (`station_42.py -r Music`, then `-w Music`), because the schedule refers to files by name.
 
+## A Prevue-style guide channel
+
+Besides the TV Guide on ch 3, there's a guide in the style of the old Prevue channel: a live preview of each scheduled channel in turn up top, and the listings scrolling below. Add it as a web station:
+
+```json
+{"station_conf": {
+  "network_name": "Preview", "network_long_name": "Preview Guide", "channel_number": 2,
+  "network_type": "web", "live_listing": "Preview Guide",
+  "web_url": "/live/preview_guide.html?music=%2Fruntime%2Fguide_music"
+}}
+```
+
+Add `&rotate=60` to the URL to preview each channel for 60 seconds (default 40). While someone watches the guide, the channel in its preview window runs too.
+
 ## Placeholder channels
 
 To reserve a channel number with a "Coming Soon" slate and music:

@@ -7,8 +7,10 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
 
 - **A second guide channel in the Prevue / TV Guide Channel style**: video preview with promo
   text on top, a scrolling grid below. Let each install turn on either guide or both.
-  *Note:* doable as a web channel. A Chromium page can play another channel's stream in a
-  `<video>` element above our own grid. HLS output is done (`/live/hls/<ch>/index.m3u8`).
+  **First version done 2026-10-15**: ch 2 "Preview" (`/live/preview_guide.html`), a web
+  channel that plays the scheduled channels in turn (40 s each, `?rotate=`) above a scrolling
+  grid built from our XMLTV. Later: promo text per show, movies in their own colour, real
+  Prevue-style music.
 
 ## Presentation (HBO-style)
 
