@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from fs42.liquid_manager import LiquidManager
 from fs42_live import hwaccel
 from fs42_live.profile import RETRO
+from fs42_live.schedule_keeper import refresh_soon
 
 _l = logging.getLogger("FS42LIVE")
 
@@ -131,6 +132,12 @@ class ScheduledSource:
         if entry.is_stream:
             _l.warning(f"{self.network}: stream entries are not supported yet; showing standby")
             return self._slate(SLATE_SECONDS)
+        if not os.path.exists(entry.path):
+            # deleted (or its drive is gone); the catalog watcher catches up, then the
+            # schedule moves on. Until then, short slates so it switches over quickly
+            _l.warning(f"{self.network}: {entry.path} is missing; showing standby")
+            refresh_soon()
+            return self._slate(min(SLATE_SECONDS, entry.duration - pp.offset))
         offset = max(0.0, pp.offset - NUDGE.total_seconds())
         return Segment(entry.path, entry.skip + offset, entry.duration - offset)
 

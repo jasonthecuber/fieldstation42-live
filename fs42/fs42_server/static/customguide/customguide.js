@@ -403,7 +403,7 @@ function buildGridStrip(slots, schedules) {
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'channel-name';
-    nameSpan.textContent = station.network_name;
+    nameSpan.textContent = station.live_display_name || station.network_name;
 
     channelDiv.appendChild(numSpan);
     channelDiv.appendChild(nameSpan);

@@ -25,10 +25,21 @@ def channel_id(station):
     return f"{station['channel_number']}.fs42"
 
 
+def display_name(station):
+    # network_name is the key for schedules and catalogs, so it can't just be renamed
+    return station.get("live_display_name") or station["network_name"]
+
+
+def episode(content_title):
+    """(season, episode, name) from a title like "Miami Vice S01E23 Lombard", else None."""
+    match = EPISODE.search(content_title or "")
+    return (int(match[1]), int(match[2]), match[3].strip()) if match else None
+
+
 def m3u(base_url):
     lines = ["#EXTM3U"]
     for s in streamable_stations():
-        n, name = s["channel_number"], s["network_name"]
+        n, name = s["channel_number"], display_name(s)
         lines.append(
             f'#EXTINF:-1 tvg-id="{channel_id(s)}" tvg-chno="{n}" tvg-name="{name}" '
             f'group-title="FieldStation42",{name}'
@@ -42,7 +53,7 @@ def xmltv():
     stations = streamable_stations()
     for s in stations:
         ch = ET.SubElement(tv, "channel", id=channel_id(s))
-        ET.SubElement(ch, "display-name").text = s["network_name"]
+        ET.SubElement(ch, "display-name").text = display_name(s)
         ET.SubElement(ch, "display-name").text = str(s["channel_number"])
 
     since = datetime.datetime.now() - GUIDE_HISTORY
@@ -64,13 +75,13 @@ def _programme(tv, channel, block):
     ET.SubElement(prog, "title").text = block.title or "FieldStation42"
 
     content_title = getattr(block.content, "title", None)
-    match = EPISODE.search(content_title or "")
-    if match:
-        season, episode, name = int(match[1]), int(match[2]), match[3].strip()
+    ep = episode(content_title)
+    if ep:
+        season, number, name = ep
         if name:
             ET.SubElement(prog, "sub-title").text = name
-        ET.SubElement(prog, "episode-num", system="onscreen").text = f"S{season:02}E{episode:02}"
-        ET.SubElement(prog, "episode-num", system="xmltv_ns").text = f"{season - 1}.{episode - 1}."
+        ET.SubElement(prog, "episode-num", system="onscreen").text = f"S{season:02}E{number:02}"
+        ET.SubElement(prog, "episode-num", system="xmltv_ns").text = f"{season - 1}.{number - 1}."
     elif content_title and content_title != block.title:
         ET.SubElement(prog, "sub-title").text = content_title
     ET.SubElement(prog, "previously-shown")
@@ -88,12 +99,19 @@ def web_blocks(title, start, end):
         hour += HOUR
 
 
-def list_web_channels_in_retro_guide():
-    """Upstream's retro guide only has listings for scheduled stations; add the web channels'."""
+def fill_in_retro_guide():
+    """Upstream's retro guide only lists scheduled stations, and shows episode titles only from
+    NFO metadata. Add listings for the web channels, and episode titles from file names."""
     upstream = LiquidAPI.get_all_blocks
 
     def get_all_blocks(start, end):
         by_station = upstream(start, end)
+        for blocks in by_station.values():
+            for block in blocks:
+                ep = episode(getattr(block.content, "title", None))
+                if ep and ep[2]:
+                    # upstream puts NFO metadata over this when there is some
+                    block.meta = {"type": "episode", "show_title": block.title, "title": ep[2]}
         for s in StationManager().stations:
             if s["network_type"] == "web" and not s.get("hidden"):
                 title = s.get("live_guide_listing") or listing(s)  # the guide shows the channel name beside it

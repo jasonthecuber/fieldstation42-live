@@ -39,6 +39,11 @@ def refresh_changed_catalogs():
         except (OSError, ValueError):
             before = None  # first look: take the catalog as current
         if before is not None and now != before:
+            emptied = folders_emptied(station["content_dir"], before, now)
+            if emptied:
+                # most likely the drive or share behind them isn't mounted, not a real removal
+                _l.warning(f"catalog watcher: {name}: no files in {', '.join(emptied)}; leaving its catalog alone")
+                continue
             added, gone = len(now - before), len(before - now)
             _l.info(f"catalog watcher: {name} has {added} new and {gone} removed files; updating its catalog")
             update(station, keep_schedule=not gone)
@@ -47,6 +52,14 @@ def refresh_changed_catalogs():
         with open(state, "w") as f:
             json.dump(sorted(now), f)
     return changed
+
+
+def folders_emptied(content_dir, before, now):
+    """Top-level folders (tags) that had files and now have none, though the folder (or the
+    link to it) is still there. Deleting the folder itself is a real removal."""
+    def tags(entries):
+        return {os.path.relpath(e.split("|")[0], content_dir).split(os.sep)[0] for e in entries}
+    return sorted(t for t in tags(before) - tags(now) if os.path.lexists(os.path.join(content_dir, t)))
 
 
 def media_in(content_dir):

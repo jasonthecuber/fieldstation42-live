@@ -8,6 +8,8 @@ config) and builds the way the web console's "add time" does: in a thread, then 
 import asyncio
 import datetime
 import logging
+import threading
+import time
 
 from fs42.liquid_api import LiquidAPI
 from fs42.liquid_manager import LiquidManager
@@ -18,6 +20,7 @@ from fs42_live.catalog_watcher import refresh_changed_catalogs
 _l = logging.getLogger("FS42LIVE")
 
 CHECK_EVERY = 3600  # seconds
+SOON_AT_MOST_EVERY = 60  # seconds between catch-ups asked for by streams
 # Keep at least a week built, so the guide (XMLTV) always has days of listings
 DEFAULT_CONF = {"trigger_add_at": "week", "amount_to_add": "week"}
 TRIGGER_DELTAS = {
@@ -36,10 +39,31 @@ async def keep_schedules_built():
         await asyncio.sleep(CHECK_EVERY)
 
 
+_busy = threading.Lock()
+_last_soon = 0.0
+
+
 def refresh_and_extend():
-    # new media first, so time added below can use it
-    refresh_changed_catalogs()
-    extend_if_needed()
+    with _busy:
+        # new media first, so time added below can use it
+        refresh_changed_catalogs()
+        extend_if_needed()
+
+
+def refresh_soon():
+    """For a stream that found a scheduled file missing: catch up now, not within the hour."""
+    global _last_soon
+    if _busy.locked() or time.monotonic() - _last_soon < SOON_AT_MOST_EVERY:
+        return
+    _last_soon = time.monotonic()
+    threading.Thread(target=_refresh_quietly, daemon=True).start()
+
+
+def _refresh_quietly():
+    try:
+        refresh_and_extend()
+    except Exception:
+        _l.exception("schedule keeper: catch-up failed")
 
 
 def extend_if_needed():

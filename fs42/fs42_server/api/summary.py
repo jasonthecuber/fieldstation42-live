@@ -16,6 +16,7 @@ async def get_summary():
         summary = {
             "network_name": station["network_name"],
             "network_long_name": station.get("network_long_name", ""),
+            "live_display_name": station.get("live_display_name"),  # fs42_live
             "channel_number": station["channel_number"],
             "_has_schedule": station["_has_schedule"],
             "hidden": station.get("hidden", False),

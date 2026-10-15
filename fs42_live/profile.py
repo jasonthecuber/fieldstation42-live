@@ -26,7 +26,9 @@ class OutputProfile:
         )
 
     def encode_args(self, hw=False):
-        gop = 60  # ~2 s, so a new viewer never waits long for a keyframe
+        # ~1 s: a new viewer never waits long for a keyframe, and clients that get HLS from
+        # Jellyfin (Roku) start sooner, since Jellyfin can only cut its segments at keyframes
+        gop = 30
         if hw:
             video = ["-c:v", "h264_vaapi", "-bf", "0"]
         else:
