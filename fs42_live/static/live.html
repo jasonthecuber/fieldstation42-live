@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live - FieldStation42</title>
+    <link rel="stylesheet" href="https://unpkg.com/purecss@3.0.0/build/pure-min.css">
+    <link rel="stylesheet" href="https://unpkg.com/purecss@3.0.0/build/grids-responsive-min.css">
+    <link rel="stylesheet" id="theme-css" href="/static/themes/default.css">
+    <style>
+        .live { padding: 1em; max-width: 60em; margin: 0 auto; }
+        .live table { width: 100%; margin: 1em 0; }
+        .live td, .live th { vertical-align: middle; }
+        .live .state-on { font-weight: bold; }
+        .live .muted { opacity: 0.6; }
+        .live code { user-select: all; word-break: break-all; }
+        .live dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4em 1em; }
+        .live dt { font-weight: bold; }
+        .live dd { margin: 0; }
+    </style>
+</head>
+
+<body>
+    <script src="/static/fs42_client.js"></script>
+    <script src="/static/common.js"></script>
+    <script>
+        const REFRESH_MS = 3000;
+
+        document.addEventListener('DOMContentLoaded', async function () {
+            window.fs42Common.initTheme();
+            const base = location.origin;
+            const content = `
+                <div class="pure-u-1 live">
+                    <h2>Live channels</h2>
+                    <p>Each channel streams only while someone is watching, and stops about 30 seconds after the last viewer leaves.</p>
+                    <table class="pure-table pure-table-horizontal">
+                        <thead><tr><th>Ch</th><th>Name</th><th>Status</th><th>Viewers</th><th>Running</th><th>Schedule built to</th><th></th></tr></thead>
+                        <tbody id="channels"><tr><td colspan="7">Loading…</td></tr></tbody>
+                    </table>
+                    <h3>Jellyfin setup</h3>
+                    <dl>
+                        <dt>M3U tuner</dt><dd><code>${base}/live/channels.m3u</code></dd>
+                        <dt>XMLTV guide</dt><dd><code>${base}/live/xmltv.xml</code></dd>
+                        <dt>A channel</dt><dd><code>${base}/live/stream/&lt;number&gt;.ts</code></dd>
+                    </dl>
+                    <h3>Output</h3>
+                    <dl>
+                        <dt>Encoder</dt><dd id="encoder">…</dd>
+                        <dt>Format</dt><dd id="profile">…</dd>
+                    </dl>
+                </div>`;
+            document.body.innerHTML = await window.fs42Common.createPageLayout('Live', content);
+            refresh();
+            setInterval(refresh, REFRESH_MS);
+        });
+
+        function duration(seconds) {
+            const h = Math.floor(seconds / 3600), m = Math.floor(seconds % 3600 / 60), s = seconds % 60;
+            return h ? `${h}h ${m}m` : m ? `${m}m ${s}s` : `${s}s`;
+        }
+
+        function scheduleEnd(channel) {
+            if (channel.type === 'web') return '<span class="muted">(web page)</span>';
+            if (!channel.schedule_ends) return '<b>not built</b>';
+            const end = new Date(channel.schedule_ends);
+            const days = (end - new Date()) / 86400000;
+            const text = end.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+            return days < 1 ? `<b>${text}</b>` : text;
+        }
+
+        function row(c) {
+            const status = !c.running ? '<span class="muted">idle</span>'
+                : c.viewers ? '<span class="state-on">streaming</span>'
+                : 'stopping soon';
+            const cell = document.createElement('tr');
+            cell.innerHTML = `
+                <td>${c.channel}</td>
+                <td></td>
+                <td>${status}</td>
+                <td>${c.running ? c.viewers : ''}</td>
+                <td>${c.running ? duration(c.uptime) + ` <span class="muted">(${c.kbps} kbps)</span>` : ''}</td>
+                <td>${scheduleEnd(c)}</td>
+                <td>${c.running ? `<button class="pure-button" data-ch="${c.channel}">Restart</button>` : ''}</td>`;
+            cell.children[1].textContent = c.name;
+            const button = cell.querySelector('button');
+            if (button) button.addEventListener('click', () => restart(c));
+            return cell;
+        }
+
+        async function refresh() {
+            try {
+                const status = await (await fetch('/live/status')).json();
+                document.getElementById('channels').replaceChildren(...status.channels.map(row));
+                document.getElementById('encoder').textContent = status.encoder;
+                document.getElementById('profile').textContent = status.profile;
+            } catch (e) {
+                console.warn('live status failed', e);
+            }
+        }
+
+        async function restart(channel) {
+            if (!confirm(`Restart ${channel.name}? Anyone watching will see it reconnect.`)) return;
+            await fetch(`/live/channels/${channel.channel}/restart`, { method: 'POST' });
+            refresh();
+        }
+    </script>
+</body>
+
+</html>

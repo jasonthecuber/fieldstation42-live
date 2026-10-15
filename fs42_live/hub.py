@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 from fs42_live.scheduled_source import ScheduledSource
 from fs42_live.web_source import WebPageSource
@@ -18,6 +19,8 @@ class _Channel:
         self.name = station["network_name"]
         self.viewers = set()
         self.closed = False
+        self.started = time.monotonic()
+        self.bytes_out = 0
         self._idle = None
         self._gop = GopCache()
         source = WebPageSource(station) if station["network_type"] == "web" else ScheduledSource(station)
@@ -40,6 +43,18 @@ class _Channel:
         if not self.viewers and not self.closed and self._idle is None:
             self._idle = asyncio.create_task(self._stop_when_idle())
 
+    def stop(self):
+        self._task.cancel()
+
+    def status(self):
+        uptime = time.monotonic() - self.started
+        return {
+            "viewers": len(self.viewers),
+            "uptime": round(uptime),
+            "kbps": round(self.bytes_out * 8 / 1000 / uptime) if uptime > 0 else 0,
+            "idle_stop_pending": self._idle is not None,
+        }
+
     async def _stop_when_idle(self):
         await asyncio.sleep(IDLE_GRACE)
         if not self.viewers:
@@ -54,6 +69,7 @@ class _Channel:
                 cut = len(data) - len(data) % TS_PACKET
                 data, carry = data[:cut], data[cut:]
                 self._gop.feed(data)
+                self.bytes_out += len(data)
                 for viewer in list(self.viewers):
                     try:
                         viewer.put_nowait(data)
@@ -91,6 +107,19 @@ class ChannelHub:
                 yield chunk
         finally:
             channel.leave(viewer)
+
+    def status(self):
+        """Running channels by number."""
+        return {n: c.status() for n, c in self._channels.items() if not c.closed}
+
+    def restart(self, number):
+        """Stop a channel's encode; viewers reconnect and get a fresh one. False if it wasn't running."""
+        channel = self._channels.get(number)
+        if channel is None or channel.closed:
+            return False
+        _l.info(f"{channel.name}: restarted from the control panel")
+        channel.stop()
+        return True
 
 
 hub = ChannelHub()
