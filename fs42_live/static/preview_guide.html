@@ -195,9 +195,16 @@ function showPreview() {
 function promo(channel) {
   const now = new Date(), show = onAt(channel, now);
   document.getElementById("now-ch").textContent = channel ? `${channel.number} ${channel.name.toUpperCase()}` : "";
-  document.getElementById("now-title").textContent = show ? show.title + (show.sub ? `: ${show.sub}` : "") : "";
+  document.getElementById("now-title").textContent = show ? label(show, channel) : "";
   const next = channel?.shows.find(s => s.start >= (show?.stop || now));
-  document.getElementById("next").textContent = next ? `NEXT ${time(next.start)}  ${next.title}` : "";
+  document.getElementById("next").textContent = next ? `NEXT ${time(next.start)}  ${label(next, channel)}` : "";
+}
+
+function label(show, channel) {
+  // the channel line already names a single-show channel, so just the episode
+  const same = show.title?.toLowerCase().replace(/\s/g, "") === channel.name.toLowerCase().replace(/\s/g, "");
+  if (!show.sub) return show.title;
+  return same ? `"${show.sub}"` : `${show.title}: ${show.sub}`;
 }
 
 function tick() {
