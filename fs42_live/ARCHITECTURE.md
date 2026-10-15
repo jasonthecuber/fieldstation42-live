@@ -74,7 +74,8 @@ through without bars. A 720p 16:9 profile stays available for channels that want
 
 ### 3. Jellyfin integration
 
-- `GET /live/channels.m3u`: one entry per non-hidden station with `tvg-id`, `tvg-chno`
+- `GET /live/channels.m3u`: one entry per streamable station (including ones `hidden` from the
+  retro guide) with `tvg-id`, `tvg-chno`
   (FS42 channel number), `tvg-name`, `tvg-logo`, and the stream URL.
 - `GET /live/xmltv.xml`: programmes from `LiquidAPI.get_all_blocks` (title, episode
   metadata where the NFO/TMDB data has it) for the next N hours. Web channels get a
@@ -123,7 +124,7 @@ Extend the upstream web console instead of building a new one:
 | M0 | Baseline: stock FS42 in a container, Miami Vice station, catalog + schedule built | Web console shows a correct schedule |
 | M1 | One channel streaming (`/live/stream/{ch}.ts`) | Plays in VLC on the Windows PC across a segment boundary (done) |
 | M2 | M3U + XMLTV, fan-out, on-demand lifecycle, Quick Sync, gapless segment switches | Channel and guide data in Jellyfin; plays on Roku and over Tailscale |
-| M3 | Guide channel as a stream | Retro guide playable in Jellyfin |
+| M3 (done) | Guide channel as a stream; "Coming Soon" placeholder channels | Retro guide playable in Jellyfin |
 | M4 | Weather channel | WS4KP forecast with music playable in Jellyfin |
 | M5 | Live page in the control panel + packaging | A fresh Beelink is set up from the compose file + script |
 | M6 | Content rotation, commercials import pipeline | |
@@ -133,6 +134,8 @@ Extend the upstream web console instead of building a new one:
 
 - With Quick Sync only the encode is on the GPU; decoding and scaling stay on the CPU
   (about 0.1 core per channel on the N100).
+- A web channel costs about half a core while watched (Chromium ~0.25, x11grab +
+  encode ~0.2); they only run while tuned.
 - The schedule keeper (schedule_keeper.py) and the web console's "add time" don't
   share a lock; running both builds at the same moment could conflict.
 
