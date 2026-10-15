@@ -1,0 +1,10 @@
+{
+    "name": "FieldStation42",
+    "short_name": "FS42 TV",
+    "start_url": "/live/watch",
+    "scope": "/live/",
+    "display": "fullscreen",
+    "orientation": "landscape",
+    "background_color": "#000000",
+    "theme_color": "#000000"
+}

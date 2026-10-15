@@ -108,3 +108,8 @@ async def hls_segment(channel: int, name: str):
 @router.get("/watch")
 async def watch_page():
     return FileResponse(os.path.join(STATIC, "watch.html"), headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/watch.webmanifest")
+async def watch_manifest():
+    return FileResponse(os.path.join(STATIC, "watch.webmanifest"), media_type="application/manifest+json")
