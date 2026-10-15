@@ -89,6 +89,24 @@ Schedules are built a week ahead and extended automatically. The **Live** page s
 
 After adding or changing stations, restart the server (`docker restart fs42-live`) and refresh Jellyfin's guide data.
 
+## A music video channel
+
+Music videos play as an FS42 clip show: back-to-back videos with commercial breaks. Name the files `Artist - Title (1985).mp4`, and each video gets MTV-style captions (artist, "title", year) in the lower left, a few seconds in and again near the end. Tags like "(Official Video)" are dropped from the captions.
+
+Make a catalog folder with the videos (a symlink to wherever they live is fine), a `commercial` folder and a `bump` folder (upstream needs at least one bump; a short channel ident works). Then add these to a standard station:
+
+```json
+"content_dir": "catalog/music",
+"commercial_dir": "commercial",
+"bump_dir": "bump",
+"clip_shows": [{"tags": "music_videos", "duration": 60}],
+"live_captions": ["music_videos"],
+"live_titles": {"music_videos": "Music Videos"},
+"day_templates": {"daily": {"0": {"tags": "music_videos"}, "...": "every hour to 23"}}
+```
+
+`live_captions` lists the clip folders that get captions. `live_titles` names the clip show in the guides; otherwise they show the folder name. After renaming or adding videos, rebuild the station's catalog and schedule (`station_42.py -r Music`, then `-w Music`), because the schedule refers to files by name.
+
 ## Placeholder channels
 
 To reserve a channel number with a "Coming Soon" slate and music:

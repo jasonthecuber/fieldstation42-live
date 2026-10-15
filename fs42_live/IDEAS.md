@@ -80,6 +80,11 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
 
 ## Content
 
+- **Music channel (ch 9)** is live (2026-10-15): 80s and 90s videos with MTV-style captions and
+  80s commercials, and a generated "FS42 Music Videos" ident as its bump. Later: real MTV-era
+  idents in `catalog/music/bump`, and split by decade into two channels once there are more
+  videos.
+
 - **Movies channel (ch 7):** Jason has a few retro movies in `/mnt/storage/Movies` (the "Old
   Drive"). Enough to start the channel, with HBO-style intros and "Next on" slates.
 - **Shared '80s commercials:** move them out of `catalog/miami_vice/commercial/` into a shared

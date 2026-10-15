@@ -33,7 +33,7 @@ def parse(path):
     artist, dash, title = name.partition(" - ")
     if not dash:
         return None, name, year
-    return artist.strip(), title.strip(), year
+    return artist.strip(), title.strip().strip("'\""), year
 
 
 def drawtext(path, start, end):
