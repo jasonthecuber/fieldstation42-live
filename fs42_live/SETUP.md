@@ -34,9 +34,20 @@ In Jellyfin, go to **Dashboard → Live TV**:
 2. **TV guide data providers → +** → **XMLTV**, file or URL: `http://<server>:4242/live/xmltv.xml`
 3. Click **Refresh guide data**.
 
-The channels now appear under Live TV. A channel starts streaming when someone tunes in, and stops about 30 seconds after the last viewer leaves.
+The channels now appear under Live TV. A channel starts streaming when someone tunes in, and stops about 30 seconds after the last viewer leaves (`idle_grace` below).
 
-To watch without Jellyfin, open `http://<server>:4242/live/watch` in a browser (phones too). Arrow keys or the on-screen buttons change channels, and typing a number tunes to it. It plays the same streams as Jellyfin (older iPhones get HLS instead), and a channel comes up in about 2 seconds.
+To watch without Jellyfin, open `http://<server>:4242/live/watch` in a browser (phones too). Arrow keys or the on-screen buttons change channels, and typing a number tunes to it. It plays the same streams as Jellyfin (older iPhones get HLS instead). The channels on either side of the one playing are kept warm, so flipping up or down is instant (about 0.1 s); any other channel comes up in about 2 seconds.
+
+Streaming settings go in a `"live"` section of `confs/main_config.json` (create the file if there isn't one); anything left out keeps its default, and they take effect when the container restarts:
+
+```json
+{ "live": { "idle_grace": 30, "surf_grace": 5, "warm_neighbours": 1, "page_load": 0.5 } }
+```
+
+- `idle_grace`: seconds a channel keeps running after its last Jellyfin viewer leaves (Jellyfin sometimes probes a channel, closes it and reopens it).
+- `surf_grace`: the same for the web player, which keeps naming the channels it wants warm every 2 seconds, so keep this at 3 or more.
+- `warm_neighbours`: how many channels on each side the web player warms; 0 turns it off. Each warm web channel (guide, weather, Coming Soon) costs about half a CPU core on an N100, a show channel about a tenth.
+- `page_load`: seconds a web channel's page gets to draw before capture starts. A station can override it with `live_page_load`.
 
 ## 3. Add show channels
 
