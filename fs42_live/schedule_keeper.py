@@ -15,6 +15,7 @@ from fs42.liquid_api import LiquidAPI
 from fs42.liquid_manager import LiquidManager
 from fs42.liquid_schedule import LiquidSchedule
 from fs42.station_manager import StationManager
+from fs42_live.break_finder import scan_new_episodes
 from fs42_live.catalog_watcher import refresh_changed_catalogs
 
 _l = logging.getLogger("FS42LIVE")
@@ -64,6 +65,27 @@ def _refresh_quietly():
         refresh_and_extend()
     except Exception:
         _l.exception("schedule keeper: catch-up failed")
+
+
+async def keep_breaks_found():
+    while True:
+        try:
+            replan = await asyncio.to_thread(scan_new_episodes)
+            if replan:
+                await asyncio.to_thread(rebuild, replan)
+        except Exception:
+            _l.exception("break finder: scan failed")
+        await asyncio.sleep(CHECK_EVERY)
+
+
+def rebuild(stations):
+    """For schedules planned before their episodes' breaks were found. A reset rewinds each
+    show to the episode that started today and rebuilds from midnight, so today's lineup stays."""
+    with _busy:
+        for station in stations:
+            _l.info(f"break finder: rebuilding {station['network_name']}'s schedule with the new breaks")
+            LiquidManager().reset_schedule(station)
+        extend_if_needed()
 
 
 def extend_if_needed():

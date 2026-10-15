@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 def install(app):
     """Add the /live endpoints and background jobs to upstream's FastAPI app."""
     from fs42_live.router import router
-    from fs42_live.schedule_keeper import keep_schedules_built
+    from fs42_live.schedule_keeper import keep_breaks_found, keep_schedules_built
     from fs42_live.guide import fill_in_retro_guide
 
     app.include_router(router)
@@ -18,10 +18,12 @@ def install(app):
     @asynccontextmanager
     async def lifespan(a):
         keeper = asyncio.create_task(keep_schedules_built())
+        breaks = asyncio.create_task(keep_breaks_found())
         try:
             async with upstream_lifespan(a) as state:
                 yield state
         finally:
             keeper.cancel()
+            breaks.cancel()
 
     app.router.lifespan_context = lifespan
