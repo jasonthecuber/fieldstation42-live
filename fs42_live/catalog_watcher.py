@@ -1,10 +1,11 @@
-"""Rebuilds a station's catalog when files are added to or removed from its content folder.
+"""Updates a station's catalog when files are added to or removed from its content folder.
 
 Upstream rebuilds catalogs only when asked (web console or `station_42.py -r`), and its
-rebuild also deletes the station's schedule. When files were only added there's no need
-for that: the built schedule still plays, sequences keep their place and take in the new
-episodes, and new media shows up as the schedule keeper adds time. Only when files have
-gone is the schedule rebuilt as well, since it may point at them.
+rebuild replaces every catalog entry, so their IDs change and the station's schedule (which
+refers to entries by ID) has to be deleted too. This scans the folder the same way but
+only inserts new entries and deletes missing ones, so the built schedule keeps working:
+sequences keep their place and take in new episodes, and new media shows up as the schedule
+keeper adds time. Only when files have gone is the schedule rebuilt, since it may use them.
 """
 
 import json
@@ -12,6 +13,8 @@ import logging
 import os
 
 from fs42.catalog_api import CatalogAPI
+from fs42.catalog_entry import CatalogEntry
+from fs42.catalog_io import CatalogIO
 from fs42.liquid_manager import LiquidManager
 from fs42.catalog import ShowCatalog
 from fs42.station_manager import StationManager
@@ -37,8 +40,8 @@ def refresh_changed_catalogs():
             before = None  # first look: take the catalog as current
         if before is not None and now != before:
             added, gone = len(now - before), len(before - now)
-            _l.info(f"catalog watcher: {name} has {added} new and {gone} removed files; rebuilding its catalog")
-            rebuild(station, keep_schedule=not gone)
+            _l.info(f"catalog watcher: {name} has {added} new and {gone} removed files; updating its catalog")
+            update(station, keep_schedule=not gone)
             changed = True
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(state, "w") as f:
@@ -60,10 +63,32 @@ def media_in(content_dir):
     return found
 
 
-def rebuild(station, keep_schedule):
-    # the same steps as the web console's catalog rebuild, which always resets the schedule
+def update(station, keep_schedule):
     if not keep_schedule and station.get("_has_schedule"):
+        # before the catalog changes, while the schedule's entries can still be looked up
         LiquidManager().reset_schedule(station)
     ShowCatalog.clear_fluid_cache()
-    CatalogAPI.delete_catalog(station)
-    ShowCatalog(station, rebuild_catalog=True)
+    MergingCatalog(station, rebuild_catalog=True)
+
+
+class MergingCatalog(ShowCatalog):
+    """Builds like upstream, but writes only the changes."""
+
+    def _write_catalog(self):
+        scanned = {}
+        for entries in self.clip_index.values():
+            if isinstance(entries, list):
+                for entry in entries:
+                    if isinstance(entry, CatalogEntry):
+                        scanned[(entry.tag, entry.path)] = entry
+        stored = {(e.tag, e.path): e for e in CatalogAPI.get_entries(self.config)}
+        name = self.config["network_name"]
+        CatalogIO().put_catalog_entries(name, [e for key, e in scanned.items() if key not in stored])
+        with CatalogIO()._get_connection() as db:
+            for key in stored.keys() - scanned.keys():
+                db.execute("DELETE FROM catalog_entries WHERE id = ?", (stored[key].dbid,))
+            for key in stored.keys() & scanned.keys():
+                # a file replaced under the same name
+                if abs(stored[key].duration - scanned[key].duration) > 1:
+                    db.execute("UPDATE catalog_entries SET duration = ? WHERE id = ?",
+                               (scanned[key].duration, stored[key].dbid))
