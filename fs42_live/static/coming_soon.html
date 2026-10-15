@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<!-- "Coming Soon" slate for channels that don't have programming yet.
+     /live/coming_soon.html?name=Classic%20Cartoons&ch=4 -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Coming Soon</title>
+<style>
+  html, body {
+    margin: 0; width: 100%; height: 100%; overflow: hidden;
+    font-family: "DejaVu Sans", "Liberation Sans", sans-serif; color: #fff;
+  }
+  body {
+    background: radial-gradient(ellipse at center, #1d3fa8 0%, #0b1a5c 55%, #050b2e 100%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  /* faint CRT scanlines */
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0.18) 0 1px, transparent 1px 3px);
+  }
+  #ch {
+    position: fixed; top: 6vh; left: 6vw; padding: 0.3vh 2vw;
+    border: 0.6vh solid #fff; border-radius: 1vh;
+    font-weight: bold; font-size: 6vh; letter-spacing: 0.3vw;
+    text-shadow: 0.4vh 0.4vh 0 #000;
+  }
+  #clock {
+    position: fixed; top: 7vh; right: 6vw;
+    font-weight: bold; font-size: 5vh; text-shadow: 0.4vh 0.4vh 0 #000;
+  }
+  #name {
+    max-width: 88vw; text-align: center; line-height: 1.1;
+    font-weight: bold; font-size: 11vh;
+    text-shadow: 0.6vh 0.6vh 0 #000;
+  }
+  #soon {
+    margin-top: 5vh; font-weight: bold; font-size: 9vh; letter-spacing: 0.8vw;
+    color: #ffd400; text-shadow: 0.6vh 0.6vh 0 #7a2a00;
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  #bars {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 4vh; display: flex;
+  }
+  #bars div { flex: 1; }
+</style>
+</head>
+<body>
+  <div id="ch"></div>
+  <div id="clock"></div>
+  <div id="name"></div>
+  <div id="soon">COMING SOON</div>
+  <div id="bars"></div>
+<script>
+  const params = new URLSearchParams(location.search);
+  const ch = params.get("ch");
+  document.getElementById("name").textContent = params.get("name") || "New Channel";
+  if (ch) document.getElementById("ch").textContent = "CH " + ch;
+  else document.getElementById("ch").remove();
+
+  // a strip of color bars along the bottom
+  for (const color of ["#c0c0c0", "#c0c000", "#00c0c0", "#00c000", "#c000c0", "#c00000", "#0000c0"]) {
+    document.getElementById("bars").appendChild(document.createElement("div")).style.background = color;
+  }
+
+  function tick() {
+    document.getElementById("clock").textContent =
+      new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  tick();
+  setInterval(tick, 1000);
+</script>
+</body>
+</html>

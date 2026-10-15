@@ -79,7 +79,7 @@ def _web_listings(tv, station, since):
     while hour < since + GUIDE_HISTORY + WEB_LISTINGS:
         prog = ET.SubElement(tv, "programme", start=_xmltv_time(hour),
                              stop=_xmltv_time(hour + datetime.timedelta(hours=1)), channel=channel_id(station))
-        ET.SubElement(prog, "title").text = station["network_name"]
+        ET.SubElement(prog, "title").text = station.get("live_listing") or station["network_name"]
         hour += datetime.timedelta(hours=1)
 
 
