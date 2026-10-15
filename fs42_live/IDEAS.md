@@ -8,7 +8,7 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
 - **A second guide channel in the Prevue / TV Guide Channel style**: video preview with promo
   text on top, a scrolling grid below. Let each install turn on either guide or both.
   *Note:* doable as a web channel. A Chromium page can play another channel's stream in a
-  `<video>` element above our own grid. Needs HLS output (see Players).
+  `<video>` element above our own grid. HLS output is done (`/live/hls/<ch>/index.m3u8`).
 
 ## Presentation (HBO-style)
 
@@ -31,7 +31,8 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   - Immersive mode: feels like an old TV set. Channels plus the guide (which is a channel),
     channel up/down. Settings hidden.
   - Click a show in the guide to tune to it.
-  - Needs HLS output: iOS Safari won't play our raw MPEG-TS.
+  - HLS output and a first player are done (`/live/watch`, 2026-10-15); this would grow it
+    into an installable PWA.
 - **On-demand mode**: pick any episode or movie and stream it (like Jellyfin), reachable
   from a hidden menu, not from immersive mode.
   - **Retro mode**: on-demand with the era's pre-show (HBO bumps) and commercial breaks

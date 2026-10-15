@@ -36,6 +36,8 @@ In Jellyfin, go to **Dashboard → Live TV**:
 
 The channels now appear under Live TV. A channel starts streaming when someone tunes in, and stops about 30 seconds after the last viewer leaves.
 
+To watch without Jellyfin, open `http://<server>:4242/live/watch` in a browser (phones too). Arrow keys or the on-screen buttons change channels, and typing a number tunes to it. It plays the channels as HLS, which iPhones and browsers need; Jellyfin keeps the M3U above.
+
 ## 3. Add show channels
 
 A channel's content lives in a folder under the data folder's `catalog/`. Each subfolder becomes a tag that the schedule can use. Link your shows in rather than copying them:
@@ -55,7 +57,7 @@ docker exec fs42-live python3 fs42_live/tools/import_commercials.py catalog/miam
 
 The second argument is the archive.org item (the part of its address after `/details/`). Any further arguments pick only the files whose names contain them. Other good items: `one-hour-of-1980s-tv-commercials-80s-commercial-compilation-1` and `television-beer-commercials-1970s-1980s`. For a kids' channel, use the Saturday-morning files of `Vintage_Commercials_Advertisements_80s`.
 
-Bumpers ("Miami Vice will continue…") are too few per tape to split automatically, so they're cut by hand. The four in `bump/` come from archive.org items `capture-a-2454` (KRON, at 64.2–71.1, 160.0–165.3 and 169.4–172.6 s) and `nbc-commercial-breaks-september-12-1986` (KING, at 296.1–303.1 s), saved with `save_spot` from the importer. Bumps in `bump/` play on either side of a break. To keep one to its side, put it in `bump/pre/` (going into the break) or `bump/post/` (coming back).
+Bumpers ("Miami Vice will continue…") are too few per tape to split automatically, so they're cut by hand. The four come from archive.org items `capture-a-2454` (KRON, at 64.2–71.1, 160.0–165.3 and 169.4–172.6 s) and `nbc-commercial-breaks-september-12-1986` (KING, at 296.1–303.1 s), saved with `save_spot` from the importer. Bumps in `bump/` play on either side of a break. To keep one to its side, put it in `bump/pre/` (going into the break) or `bump/post/` (coming back). The two that say "will continue" (`kron_1986_boat_1`, `king_1986_street`) are in `bump/pre/`.
 
 Until you have real ones, this makes color-bar stand-ins for both folders:
 
@@ -64,6 +66,8 @@ docker exec fs42-live sh fs42_live/tools/make_placeholder_reels.sh catalog/miami
 ```
 
 The server notices new or removed files in a station's folder within the hour (or right away on `docker restart fs42-live`) and updates its catalog. New clips are worked into the schedule as time is added; if files were removed, the schedule is rebuilt. Rebuilding a catalog from the web console works too, but it always clears the schedule.
+
+The server also finds each episode's act breaks (where the picture fades to black and the sound drops), so commercial breaks land where the network put them. Each episode is scanned once, about a minute apiece at low priority. A new library takes a while, and the schedule is rebuilt once its episodes are done. Episodes without clear fades keep evenly spaced breaks.
 
 Then open the web console at `http://<server>:4242/` and go to **Stations**:
 
