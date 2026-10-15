@@ -36,7 +36,7 @@ In Jellyfin, go to **Dashboard → Live TV**:
 
 The channels now appear under Live TV. A channel starts streaming when someone tunes in, and stops about 30 seconds after the last viewer leaves.
 
-To watch without Jellyfin, open `http://<server>:4242/live/watch` in a browser (phones too). Arrow keys or the on-screen buttons change channels, and typing a number tunes to it. It plays the channels as HLS, which iPhones and browsers need; Jellyfin keeps the M3U above.
+To watch without Jellyfin, open `http://<server>:4242/live/watch` in a browser (phones too). Arrow keys or the on-screen buttons change channels, and typing a number tunes to it. It plays the same streams as Jellyfin (older iPhones get HLS instead), and a channel comes up in about 2 seconds.
 
 ## 3. Add show channels
 
