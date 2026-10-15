@@ -3,7 +3,7 @@
 #   add_coming_soon.sh <confs dir> <channel number> "<channel name>" ["<short name>"]
 # The short name (default: the full name) is the channel's name in Jellyfin, whose guide
 # has little room for it; the slate and the guide listing use the full name.
-# Restart the fs42-live container afterwards. Replace the file once the channel is real.
+# Both guides list it as "<name> - Coming Soon". Restart the fs42-live container afterwards. Replace the file once the channel is real.
 set -eu
 [ $# -ge 3 ] || { echo "usage: $0 <confs dir> <channel number> \"<channel name>\" [\"<short name>\"]" >&2; exit 1; }
 
@@ -18,7 +18,6 @@ station = {
     "network_long_name": name,
     "channel_number": number,
     "network_type": "web",
-    "hidden": True,  # keep it off the retro guide channel; Jellyfin's guide says "Coming Soon"
     "live_listing": f"{name} - Coming Soon",
     "web_url": f"/live/coming_soon.html?{query}",
 }

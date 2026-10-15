@@ -8,8 +8,10 @@ def install(app):
     """Add the /live endpoints and background jobs to upstream's FastAPI app."""
     from fs42_live.router import router
     from fs42_live.schedule_keeper import keep_schedules_built
+    from fs42_live.guide import list_web_channels_in_retro_guide
 
     app.include_router(router)
+    list_web_channels_in_retro_guide()
 
     upstream_lifespan = app.router.lifespan_context
 

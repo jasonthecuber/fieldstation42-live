@@ -2,8 +2,10 @@
 
 import datetime
 import re
+from types import SimpleNamespace
 from xml.etree import ElementTree as ET
 
+from fs42.liquid_api import LiquidAPI
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
 
@@ -11,6 +13,7 @@ from fs42.station_manager import StationManager
 NOT_YET_STREAMABLE = {"guide", "streaming"}
 GUIDE_HISTORY = datetime.timedelta(hours=6)  # how far back the guide starts
 WEB_LISTINGS = datetime.timedelta(days=7)  # how far ahead web channels get listings
+HOUR = datetime.timedelta(hours=1)
 EPISODE = re.compile(r"\bS(\d+)E(\d+)(?:-?E\d+)*\b\s*(.*)", re.IGNORECASE)
 
 
@@ -73,14 +76,34 @@ def _programme(tv, channel, block):
     ET.SubElement(prog, "previously-shown")
 
 
-def _web_listings(tv, station, since):
+def web_blocks(station, start, end):
     # a web channel shows the same thing all day; list it hourly so guides draw a normal grid
-    hour = since.replace(minute=0, second=0, microsecond=0)
-    while hour < since + GUIDE_HISTORY + WEB_LISTINGS:
-        prog = ET.SubElement(tv, "programme", start=_xmltv_time(hour),
-                             stop=_xmltv_time(hour + datetime.timedelta(hours=1)), channel=channel_id(station))
-        ET.SubElement(prog, "title").text = station.get("live_listing") or station["network_name"]
-        hour += datetime.timedelta(hours=1)
+    hour = start.replace(minute=0, second=0, microsecond=0)
+    while hour < end:
+        yield SimpleNamespace(title=station.get("live_listing") or station["network_name"],
+                              start_time=hour, end_time=hour + HOUR, content=None)
+        hour += HOUR
+
+
+def list_web_channels_in_retro_guide():
+    """Upstream's retro guide only has listings for scheduled stations; add the web channels'."""
+    upstream = LiquidAPI.get_all_blocks
+
+    def get_all_blocks(start, end):
+        by_station = upstream(start, end)
+        for s in StationManager().stations:
+            if s["network_type"] == "web" and not s.get("hidden"):
+                by_station[s["network_name"]] = list(web_blocks(s, start, end))
+        return by_station
+
+    LiquidAPI.get_all_blocks = staticmethod(get_all_blocks)
+
+
+def _web_listings(tv, station, since):
+    for block in web_blocks(station, since, since + GUIDE_HISTORY + WEB_LISTINGS):
+        prog = ET.SubElement(tv, "programme", start=_xmltv_time(block.start_time),
+                             stop=_xmltv_time(block.end_time), channel=channel_id(station))
+        ET.SubElement(prog, "title").text = block.title
 
 
 def _xmltv_time(when):

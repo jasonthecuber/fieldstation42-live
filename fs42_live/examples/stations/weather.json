@@ -3,7 +3,6 @@
     "network_name": "Weather",
     "channel_number": 8,
     "network_type": "web",
-    "hidden": true,
     "live_listing": "The Local Forecast",
     "live_music": "/runtime/weather_music",
     "web_url": "http://ws4kp:8080/index.html?latLonQuery=Springfield%20MO%20USA&kiosk=true&settings-kiosk-checkbox=true&settings-wide-checkbox=false"
