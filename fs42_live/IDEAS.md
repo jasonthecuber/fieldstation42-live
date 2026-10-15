@@ -45,6 +45,15 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     wraps `/live/watch` in a full-screen WebView (no browser bars, starts from the home
     screen, maps the remote's channel keys). Far less work than a Roku app (M8), and it
     covers the Onn at mom's too.
+  - **Installing apps without a store** (2026-10-15). Android TV: sideload the APK with the
+    free Downloader app from a URL our server hosts; no developer account (Google Play's is
+    $25 once, only for the store). Roku can't run Android apps; it needs a separate native
+    BrightScript/SceneGraph app. Sideload it in developer mode (remote code Home x3, Up x2,
+    Right, Left, Right, Left, Right; upload a zip to the Roku's IP), free, one sideloaded app
+    per Roku. Or publish a beta channel from a free Roku developer account: shareable by
+    link, but beta channels have expired after about 120 days, so check Roku's current rules.
+    Roku plays HLS well (not our raw TS), so a Roku app would use `/live/hls/`, with channel
+    changes of maybe 2-3 s. Jason is leaning browser-only (an Onn stick per TV) over native apps.
 - **Mobile layout for the web console.** The live page and upstream's pages stack into tall
   cards on a phone; the channel table should be a compact list.
 - **On-demand mode**: pick any episode or movie and stream it (like Jellyfin), reachable
