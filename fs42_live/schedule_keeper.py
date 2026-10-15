@@ -55,9 +55,13 @@ def extend_if_needed():
             _, end = liquid.get_extents(name)
         except ValueError:
             continue
-        if end is None or end < threshold:
+        # a fresh schedule only runs to the next Monday, so it can take two adds
+        for _ in range(3):
+            if end is not None and end >= threshold:
+                break
             _l.info(f"schedule keeper: {name} schedule ends {end}; adding a {conf['amount_to_add']}")
             LiquidSchedule(station).add_amount(conf["amount_to_add"])
+            end = LiquidAPI.get_blocks(station)[-1].end_time
             extended = True
     if extended:
         reload_without_gap(liquid)
