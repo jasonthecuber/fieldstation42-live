@@ -65,6 +65,24 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     breaks around a single episode.
   - **"Switch to stream mode"** from a live channel: jump to on-demand for what's playing,
     with or without retro mode.
+  - Scope (2026-10-15 brainstorm): keep on-demand to the FS42 catalog, where retro mode is the
+    point. For the rest of the library, Jellyfin already does it well (continue watching,
+    users, metadata), so link out to it. If anything, a per-device "resume" for retro mode.
+
+## Server landing page
+
+- **Replace the stock Homepage (gethomepage.dev) placeholders** with real links: Jellyfin,
+  the FS42 console, live page and watch player, filebrowser, qBittorrent. Homepage also has
+  widgets for Jellyfin (now playing) and qBittorrent (speeds). It's Jason's container: Claude
+  drafts `services.yaml`, Jason installs it.
+
+## Content helpers
+
+- **Wishlist → archive.org fetcher**: a file of wanted items (commercial reels, bumpers,
+  specials, public-domain cartoons and movies) that a tool searches on archive.org and
+  downloads into the right catalog folder, like `import_commercials.py`. A small UI later.
+- **Sorter for finished downloads**: move or link completed files into the right show/catalog
+  folder with clean names. Claude won't build torrent searching.
 
 ## Streaming
 
