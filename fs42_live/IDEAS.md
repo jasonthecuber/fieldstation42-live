@@ -62,3 +62,8 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   script should ask for the NordVPN WireGuard private key and write it to the stack's
   `.env` (`NORDVPN_PRIVATE_KEY`), alongside USER_ID/GROUP_ID/TIMEZONE/STORAGE_ROOT.
   Never commit the key.
+
+## Content
+
+- **Movies channel (ch 7):** Jason has a few retro movies in `/mnt/storage/Movies` (the "Old
+  Drive"). Enough to start the channel, with HBO-style intros and "Next on" slates.
