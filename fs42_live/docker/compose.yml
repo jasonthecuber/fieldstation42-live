@@ -27,3 +27,9 @@ services:
       # Catalogs store absolute paths, so media is mounted at the same path as on the host
       - ${MEDIA_ROOT:?set in .env}:${MEDIA_ROOT}:ro
     restart: unless-stopped
+
+  # WeatherStar 4000+ for the weather channel; fs42-live renders it at http://ws4kp:8080
+  ws4kp:
+    image: ghcr.io/netbymatt/ws4kp:latest
+    container_name: fs42-ws4kp
+    restart: unless-stopped
