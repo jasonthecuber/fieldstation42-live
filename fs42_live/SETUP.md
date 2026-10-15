@@ -61,7 +61,7 @@ Until you have real ones, this makes color-bar stand-ins for both folders:
 docker exec fs42-live sh fs42_live/tools/make_placeholder_reels.sh catalog/miami_vice "MIAMI VICE"
 ```
 
-After adding clips to an existing station, rebuild its catalog. The rebuild also clears its schedule, which the server rebuilds within the hour; to rebuild it right away, add a week on the station's schedule page.
+The server notices new or removed files in a station's folder within the hour (or right away on `docker restart fs42-live`) and updates its catalog. New clips are worked into the schedule as time is added; if files were removed, the schedule is rebuilt. Rebuilding a catalog from the web console works too, but it always clears the schedule.
 
 Then open the web console at `http://<server>:4242/` and go to **Stations**:
 
