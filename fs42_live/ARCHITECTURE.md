@@ -131,10 +131,10 @@ Extend the upstream web console instead of building a new one:
 
 ## Known gaps
 
-- Schedules aren't extended automatically yet; when one runs out the channel shows
-  the standby slate.
-- Only scaling is on the CPU-side with Quick Sync; decoding the source stays on the
-  CPU too (about 0.1 core per channel on the N100).
+- With Quick Sync only the encode is on the GPU; decoding and scaling stay on the CPU
+  (about 0.1 core per channel on the N100).
+- The schedule keeper (schedule_keeper.py) and the web console's "add time" don't
+  share a lock; running both builds at the same moment could conflict.
 
 ## Open questions
 
