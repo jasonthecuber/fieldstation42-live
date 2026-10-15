@@ -45,11 +45,23 @@ mkdir -p ~/fs42-data/catalog/miami_vice/commercial ~/fs42-data/catalog/miami_vic
 ln -s "/mnt/storage/TV/Miami Vice" ~/fs42-data/catalog/miami_vice/miamivice
 ```
 
-`commercial/` and `bump/` hold the clips that fill the breaks. Until you have real ones, this makes color-bar stand-ins:
+`commercial/` and `bump/` hold the clips that fill the breaks. To fill `commercial/` with real '80s ads, import compilations from archive.org. Each one is split into single spots with even volume:
+
+```sh
+docker exec fs42-live python3 fs42_live/tools/import_commercials.py catalog/miami_vice/commercial 1981-commercial-breaks
+docker exec fs42-live python3 fs42_live/tools/import_commercials.py catalog/miami_vice/commercial \
+    Vintage_Commercials_Advertisements_80s "1987-09-12 NBC Ads" "WPLG10"
+```
+
+The second argument is the archive.org item (the part of its address after `/details/`). Any further arguments pick only the files whose names contain them. Other good items: `one-hour-of-1980s-tv-commercials-80s-commercial-compilation-1` and `television-beer-commercials-1970s-1980s`. For a kids' channel, use the Saturday-morning files of `Vintage_Commercials_Advertisements_80s`.
+
+Until you have real ones, this makes color-bar stand-ins for both folders:
 
 ```sh
 docker exec fs42-live sh fs42_live/tools/make_placeholder_reels.sh catalog/miami_vice "MIAMI VICE"
 ```
+
+After adding clips to an existing station, rebuild its catalog. The rebuild also clears its schedule, which the server rebuilds within the hour; to rebuild it right away, add a week on the station's schedule page.
 
 Then open the web console at `http://<server>:4242/` and go to **Stations**:
 
