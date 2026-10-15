@@ -115,11 +115,11 @@ Besides the TV Guide on ch 3, there's a guide in the style of the old Prevue cha
 {"station_conf": {
   "network_name": "Preview", "network_long_name": "Preview Guide", "channel_number": 2,
   "network_type": "web", "live_listing": "Preview Guide",
-  "web_url": "/live/preview_guide.html?music=%2Fruntime%2Fguide_music"
+  "web_url": "/live/preview_guide.html?music=%2Fruntime%2Fprevue_music"
 }}
 ```
 
-Add `&rotate=60` to the URL to preview each channel for 60 seconds (default 40). While someone watches the guide, the channel in its preview window runs too.
+The music is the real Prevue Channel themes, from archive.org's "tvtunes" uploads (search for "Prevue Channel - Theme Song"); put the MP3s in `runtime/prevue_music`. Any folder of music works. Add `&rotate=60` to the URL to preview each channel for 60 seconds (default 40). While someone watches the guide, the channel in its preview window runs too.
 
 ## Placeholder channels
 
