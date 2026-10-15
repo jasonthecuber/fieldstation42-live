@@ -32,7 +32,21 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     channel up/down. Settings hidden.
   - Click a show in the guide to tune to it.
   - HLS output and a first player are done (`/live/watch`, 2026-10-15); this would grow it
-    into an installable PWA.
+    into an installable PWA. Full screen (double-tap, button, OK on a remote) and a
+    home-screen manifest are done too.
+  - **Breaking out to a menu** (Jason, 2026-10-15). A visible way for everyday things: OK on
+    a TV remote or a ☰ button beside ▲▼ on a phone opens a menu over the picture (on-demand,
+    guide, settings), and Back closes it. Phone swipes like down-up-down on the left edge
+    can't be found by anyone who doesn't already know them, so they'd suit the hidden modes,
+    e.g. a remote code like up-up-down-down (Konami style) on a TV. Moving full screen off OK
+    once OK opens the menu.
+  - Test on the Onn with a TV browser (TV Bro): d-pad up/down surfs, OK goes full screen.
+  - **Theater room**: the Onn stick with a browser now; later a small Android TV app that
+    wraps `/live/watch` in a full-screen WebView (no browser bars, starts from the home
+    screen, maps the remote's channel keys). Far less work than a Roku app (M8), and it
+    covers the Onn at mom's too.
+- **Mobile layout for the web console.** The live page and upstream's pages stack into tall
+  cards on a phone; the channel table should be a compact list.
 - **On-demand mode**: pick any episode or movie and stream it (like Jellyfin), reachable
   from a hidden menu, not from immersive mode.
   - **Retro mode**: on-demand with the era's pre-show (HBO bumps) and commercial breaks

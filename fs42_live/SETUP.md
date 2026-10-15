@@ -36,7 +36,7 @@ In Jellyfin, go to **Dashboard → Live TV**:
 
 The channels now appear under Live TV. A channel starts streaming when someone tunes in, and stops about 30 seconds after the last viewer leaves (`idle_grace` below).
 
-To watch without Jellyfin, open `http://<server>:4242/live/watch` in a browser (phones too). Arrow keys or the on-screen buttons change channels, and typing a number tunes to it. It plays the same streams as Jellyfin (older iPhones get HLS instead). The channels on either side of the one playing are kept warm, so flipping up or down is instant (about 0.1 s); any other channel comes up in about 2 seconds.
+To watch without Jellyfin, open `http://<server>:4242/live/watch` in a browser (phones too). Arrow keys, a TV remote's up/down or the on-screen buttons change channels, and typing a number tunes to it. Double-tap, the full-screen button, OK on a remote or `f` toggles full screen (phones and TVs go full screen when turned on). iPhones can't take a page full screen; use Share, Add to Home Screen instead, which opens it edge to edge. It plays the same streams as Jellyfin (older iPhones get HLS instead). The channels on either side of the one playing are kept warm, so flipping up or down is instant (about 0.1 s); any other channel comes up in about 2 seconds.
 
 Streaming settings go in a `"live"` section of `confs/main_config.json` (create the file if there isn't one); anything left out keeps its default, and they take effect when the container restarts:
 
