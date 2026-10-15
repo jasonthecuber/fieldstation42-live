@@ -1,5 +1,6 @@
 """M3U playlist and XMLTV guide, so IPTV clients (Jellyfin) can list and tune the channels."""
 
+import copy
 import datetime
 import re
 from types import SimpleNamespace
@@ -63,16 +64,16 @@ def xmltv():
             continue
         for block in LiquidManager().get_schedule_by_name(s["network_name"]) or []:
             if block.end_time > since:
-                _programme(tv, channel_id(s), block)
+                _programme(tv, channel_id(s), block, s)
 
     ET.indent(tv)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(tv, encoding="unicode") + "\n"
 
 
-def _programme(tv, channel, block):
+def _programme(tv, channel, block, station):
     prog = ET.SubElement(tv, "programme", start=_xmltv_time(block.start_time),
                          stop=_xmltv_time(block.end_time), channel=channel)
-    ET.SubElement(prog, "title").text = block.title or "FieldStation42"
+    ET.SubElement(prog, "title").text = block_title(station, block) or "FieldStation42"
 
     content_title = getattr(block.content, "title", None)
     ep = episode(content_title)
@@ -85,6 +86,11 @@ def _programme(tv, channel, block):
     elif content_title and content_title != block.title:
         ET.SubElement(prog, "sub-title").text = content_title
     ET.SubElement(prog, "previously-shown")
+
+
+def block_title(station, block):
+    # a clip show (music videos) is titled by its folder tag; `live_titles` names it for the guide
+    return station.get("live_titles", {}).get(block.title, block.title)
 
 
 def listing(station):
@@ -113,12 +119,23 @@ def fill_in_retro_guide():
                     # upstream puts NFO metadata over this when there is some
                     block.meta = {"type": "episode", "show_title": block.title, "title": ep[2]}
         for s in StationManager().stations:
+            if s.get("live_titles") and s["network_name"] in by_station:
+                # copies: the scheduler reads a clip block's title as its tag
+                by_station[s["network_name"]] = [_retitled(b, block_title(s, b)) for b in by_station[s["network_name"]]]
             if s["network_type"] == "web" and not s.get("hidden"):
                 title = s.get("live_guide_listing") or listing(s)  # the guide shows the channel name beside it
                 by_station[s["network_name"]] = list(web_blocks(title, start, end))
         return by_station
 
     LiquidAPI.get_all_blocks = staticmethod(get_all_blocks)
+
+
+def _retitled(block, title):
+    if title == block.title:
+        return block
+    block = copy.copy(block)
+    block.title = title
+    return block
 
 
 def _web_listings(tv, station, since):

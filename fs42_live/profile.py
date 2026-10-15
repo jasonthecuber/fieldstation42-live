@@ -13,15 +13,17 @@ class OutputProfile:
     audio_bitrate: str = "128k"
     audio_rate: int = 48000
 
-    def video_filter(self, hw=False):
+    def video_filter(self, hw=False, overlay=None):
         # Square the pixels first (DVD rips are often anamorphic), then fit inside the
         # frame: widescreen gets letterboxed, 4:3 fills it with no bars. The scaling stays
         # on the CPU either way; with hw the frames are then handed to the GPU encoder.
+        # An overlay (captions) is drawn on the finished frame.
         w, h = self.width, self.height
         return (
             "scale=trunc(iw*sar/2)*2:ih,setsar=1,"
             f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
+            + (f"{overlay}," if overlay else "") +
             f"fps={self.fps}," + ("format=nv12,hwupload" if hw else "format=yuv420p")
         )
 

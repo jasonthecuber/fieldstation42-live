@@ -7,7 +7,7 @@ from asyncio.subprocess import DEVNULL, PIPE
 from dataclasses import dataclass
 
 from fs42.liquid_manager import LiquidManager
-from fs42_live import hwaccel
+from fs42_live import captions, hwaccel
 from fs42_live.profile import RETRO
 from fs42_live.schedule_keeper import refresh_soon
 
@@ -166,6 +166,7 @@ class ScheduledSource:
     async def _run_encode(self, seg, pts, out):
         """Returns False if ffmpeg failed."""
         p = self.profile
+        overlay = None
         if seg.path is None:
             video_in = ["-f", "lavfi", "-i", f"color=c=black:s={p.width}x{p.height}:r={p.fps}"]
             has_audio = False
@@ -175,6 +176,8 @@ class ScheduledSource:
         else:
             video_in = ["-ss", f"{seg.start:.3f}", "-i", seg.path]
             has_audio = await self._has_audio(seg.path)
+            if captions.wanted(self.station, seg.path):
+                overlay = captions.drawtext(seg.path, seg.start, seg.start + seg.duration)
 
         hw = await asyncio.to_thread(hwaccel.vaapi)
         _l.info(f"{self.network}: {seg.path} from {seg.start:.1f}s for {seg.duration:.1f}s")
@@ -184,7 +187,7 @@ class ScheduledSource:
             "-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo",
             "-map", "0:v:0", "-map", "0:a:0" if has_audio else "1:a",
             "-t", f"{seg.duration:.3f}", "-shortest",
-            "-vf", p.video_filter(hw), "-af", "aresample=async=1",
+            "-vf", p.video_filter(hw, overlay), "-af", "aresample=async=1",
             *p.encode_args(hw),
             "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
         )
