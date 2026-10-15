@@ -20,7 +20,8 @@ ROOT = "/dev/shm/fs42_hls"  # in memory: segments only live a few seconds
 SEGMENT = 2  # seconds; keyframes are every second
 LIST_SIZE = 6  # segments in the playlist
 IDLE_STOP = 30  # seconds without a fetch
-FIRST_PLAYLIST_WAIT = 15  # seconds; a channel that isn't running yet has to start first
+FIRST_PLAYLIST_WAIT = 20  # seconds; a channel that isn't running yet has to start first
+FIRST_SEGMENTS = 3  # players stall on a thinner live playlist
 
 
 class _Packager:
@@ -70,11 +71,19 @@ async def playlist(station):
         packager = _packagers[number] = _Packager(station)
     packager.last_fetch = time.monotonic()
     deadline = time.monotonic() + FIRST_PLAYLIST_WAIT
-    while not os.path.exists(packager.playlist):
+    while _segments(packager.playlist) < FIRST_SEGMENTS:
         if packager.task.done() or time.monotonic() > deadline:
             return None
         await asyncio.sleep(0.25)
     return packager.playlist
+
+
+def _segments(path):
+    try:
+        with open(path) as f:
+            return f.read().count("#EXTINF")
+    except FileNotFoundError:
+        return 0
 
 
 def segment(number, name):

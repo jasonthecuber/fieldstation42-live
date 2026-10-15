@@ -15,6 +15,7 @@
         #osd.hidden { opacity: 0; }
         #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
                  background: #000; font-size: 28px; cursor: pointer; border: 0; color: #fff; width: 100%; font-family: inherit; }
+        #start[hidden] { display: none; }
         #controls { position: fixed; bottom: 4%; right: 4%; display: flex; flex-direction: column; gap: 12px;
                     transition: opacity .4s; }
         #controls.hidden { opacity: 0; pointer-events: none; }
@@ -35,8 +36,11 @@
         const video = document.getElementById("tv");
         const osd = document.getElementById("osd");
         const controls = document.getElementById("controls");
-        const native = video.canPlayType("application/vnd.apple.mpegurl") !== "";
+        // hls.js where it runs (it recovers from more); native HLS otherwise (older iPhones)
+        const native = !Hls.isSupported();
+        const STALL = 25000; // ms without the picture moving (a cold channel takes up to 20 s)
         let channels = [], current = 0, hls = null, typed = "", typedTimer, osdTimer;
+        let lastTime = -1, lastMoved = 0;
 
         function remember(n) { try { localStorage.setItem("fs42-channel", n); } catch (e) {} }
         function remembered() { try { return Number(localStorage.getItem("fs42-channel")); } catch (e) { return 0; } }
@@ -56,6 +60,7 @@
             remember(ch.channel);
             history.replaceState(null, "", "#" + ch.channel);
             const url = `/live/hls/${ch.channel}/index.m3u8`;
+            lastMoved = Date.now();
             if (native) {
                 video.src = url;
             } else {
@@ -67,8 +72,23 @@
                     if (data.fatal) setTimeout(() => tune(current), 2000);
                 });
             }
-            video.play().catch(() => {});
+            play();
         }
+
+        const start = document.getElementById("start");
+        function play() {
+            video.play().catch(e => {
+                // a phone may want its own tap before playing sound
+                if (e.name === "NotAllowedError") { start.textContent = "25B6 Tap to play"; start.hidden = false; }
+            });
+        }
+
+        video.addEventListener("error", () => native && setTimeout(() => tune(current), 2000));
+        setInterval(() => {
+            if (!channels.length || video.paused) return;
+            if (video.currentTime !== lastTime) { lastTime = video.currentTime; lastMoved = Date.now(); }
+            else if (Date.now() - lastMoved > STALL) tune(current);
+        }, 1000);
 
         function tuneNumber(n) {
             const i = channels.findIndex(c => c.channel === n);
@@ -96,7 +116,7 @@
             e.target.textContent = "Warming up…";
             const status = await (await fetch("/live/status")).json();
             channels = status.channels.sort((a, b) => a.channel - b.channel);
-            e.target.remove();
+            start.hidden = true;
             const wanted = Number(location.hash.slice(1)) || remembered();
             const i = channels.findIndex(c => c.channel === wanted);
             tune(i >= 0 ? i : 0);
