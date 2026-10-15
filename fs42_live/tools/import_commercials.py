@@ -16,7 +16,9 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.parse
+import urllib.error
 import urllib.request
 
 VIDEO = (".mp4", ".mkv", ".avi", ".mpg", ".mpeg", ".mov", ".m4v", ".ogv", ".webm")
@@ -64,8 +66,16 @@ def download(item, name):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         url = f"https://archive.org/download/{item}/{urllib.parse.quote(name)}"
         print(f"downloading {name}")
-        with urllib.request.urlopen(url) as r, open(path + ".part", "wb") as f:
-            shutil.copyfileobj(r, f, 1 << 20)
+        for attempt in range(4):  # archive.org has the odd server error
+            try:
+                with urllib.request.urlopen(url) as r, open(path + ".part", "wb") as f:
+                    shutil.copyfileobj(r, f, 1 << 20)
+                break
+            except urllib.error.URLError as e:
+                if attempt == 3:
+                    raise
+                print(f"  {e}; trying again")
+                time.sleep(30 * (attempt + 1))
         os.rename(path + ".part", path)
     return path
 
