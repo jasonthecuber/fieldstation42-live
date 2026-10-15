@@ -2,8 +2,8 @@
 # Adds a placeholder channel that shows a "Coming Soon" slate with the guide music.
 #   add_coming_soon.sh <confs dir> <channel number> "<channel name>" ["<short name>"]
 # The short name (default: the full name) is the channel's name in Jellyfin, whose guide
-# has little room for it; the slate and the guide listing use the full name.
-# Both guides list it as "<name> - Coming Soon". Restart the fs42-live container afterwards. Replace the file once the channel is real.
+# has little room for it; the slate and Jellyfin's listing ("<name> - Coming Soon") use the
+# full name. Restart the fs42-live container afterwards. Replace the file once the channel is real.
 set -eu
 [ $# -ge 3 ] || { echo "usage: $0 <confs dir> <channel number> \"<channel name>\" [\"<short name>\"]" >&2; exit 1; }
 
@@ -18,7 +18,8 @@ station = {
     "network_long_name": name,
     "channel_number": number,
     "network_type": "web",
-    "live_listing": f"{name} - Coming Soon",
+    "live_listing": f"{name} - Coming Soon",  # Jellyfin's guide
+    "live_guide_listing": "Coming Soon",  # the retro guide, which shows the name beside it
     "web_url": f"/live/coming_soon.html?{query}",
 }
 path = os.path.join(confs, "coming_soon_" + re.sub(r"\W+", "_", name.lower()).strip("_") + ".json")

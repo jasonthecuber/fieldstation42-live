@@ -76,12 +76,15 @@ def _programme(tv, channel, block):
     ET.SubElement(prog, "previously-shown")
 
 
-def web_blocks(station, start, end):
+def listing(station):
+    return station.get("live_listing") or station["network_name"]
+
+
+def web_blocks(title, start, end):
     # a web channel shows the same thing all day; list it hourly so guides draw a normal grid
     hour = start.replace(minute=0, second=0, microsecond=0)
     while hour < end:
-        yield SimpleNamespace(title=station.get("live_listing") or station["network_name"],
-                              start_time=hour, end_time=hour + HOUR, content=None)
+        yield SimpleNamespace(title=title, start_time=hour, end_time=hour + HOUR, content=None)
         hour += HOUR
 
 
@@ -93,14 +96,15 @@ def list_web_channels_in_retro_guide():
         by_station = upstream(start, end)
         for s in StationManager().stations:
             if s["network_type"] == "web" and not s.get("hidden"):
-                by_station[s["network_name"]] = list(web_blocks(s, start, end))
+                title = s.get("live_guide_listing") or listing(s)  # the guide shows the channel name beside it
+                by_station[s["network_name"]] = list(web_blocks(title, start, end))
         return by_station
 
     LiquidAPI.get_all_blocks = staticmethod(get_all_blocks)
 
 
 def _web_listings(tv, station, since):
-    for block in web_blocks(station, since, since + GUIDE_HISTORY + WEB_LISTINGS):
+    for block in web_blocks(listing(station), since, since + GUIDE_HISTORY + WEB_LISTINGS):
         prog = ET.SubElement(tv, "programme", start=_xmltv_time(block.start_time),
                              stop=_xmltv_time(block.end_time), channel=channel_id(station))
         ET.SubElement(prog, "title").text = block.title
