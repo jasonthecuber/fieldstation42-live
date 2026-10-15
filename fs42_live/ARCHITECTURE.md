@@ -126,9 +126,10 @@ Extend the upstream web console instead of building a new one:
 | M2 | M3U + XMLTV, fan-out, on-demand lifecycle, Quick Sync, gapless segment switches | Channel and guide data in Jellyfin; plays on Roku and over Tailscale |
 | M3 (done) | Guide channel as a stream; "Coming Soon" placeholder channels | Retro guide playable in Jellyfin |
 | M4 (done) | Weather channel | WS4KP forecast with music playable in Jellyfin |
-| M5 | Live page in the control panel + packaging | A fresh Beelink is set up from the compose file + script |
+| M5 (done) | Live page in the control panel + packaging (`docker/setup.sh`, `SETUP.md`) | A fresh Beelink is set up from the compose file + script |
 | M6 | Content rotation, commercials import pipeline | |
 | M7 | Natural break points: scan episodes for fade-to-black + silence (ffmpeg `blackdetect`/`silencedetect`) and schedule commercial breaks there | Breaks land on the show's own act breaks |
+| M8 | Native TV apps (Roku, Android TV/Onn) that play our streams directly: channel up/down surfing, number entry, the retro guide as an overlay. Jellyfin's TV clients don't map channel up/down, so surfing needs our own player | Surfing with the remote's channel buttons |
 
 ## Known gaps
 
