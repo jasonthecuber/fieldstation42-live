@@ -1,4 +1,4 @@
-# Usage (from this directory):  cp .env.example .env  # then edit
+# Usage (from this directory):  ./setup.sh   (or: cp .env.example .env, edit it, then:)
 #                                docker compose up -d --build
 services:
   fs42-live:

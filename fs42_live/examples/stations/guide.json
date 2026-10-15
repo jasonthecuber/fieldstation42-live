@@ -1,0 +1,9 @@
+{
+  "station_conf": {
+    "network_name": "TV Guide",
+    "channel_number": 3,
+    "network_type": "web",
+    "hidden": true,
+    "web_url": "/static/customguide/customguide.html?theme=80s&music=/runtime/guide_music"
+  }
+}
