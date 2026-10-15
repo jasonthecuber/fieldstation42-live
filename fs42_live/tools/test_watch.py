@@ -32,7 +32,7 @@ def tuned_in(page, label):
         took = "no picture after 30 s"
     channel = page.evaluate("location.hash.slice(1)")
     print(f"{label} ch {channel}: {took}", flush=True)
-    page.wait_for_timeout(1500)  # let the picture settle before the screenshot
+    page.wait_for_timeout(3000)  # watch a moment, as a surfer would (the next channel warms meanwhile)
     page.screenshot(path=f"/out/ch{channel}.png")
 
 

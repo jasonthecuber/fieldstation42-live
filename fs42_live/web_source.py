@@ -9,7 +9,7 @@ import urllib.parse
 from asyncio.subprocess import DEVNULL, PIPE
 
 from fs42.station_manager import StationManager
-from fs42_live import hwaccel
+from fs42_live import hwaccel, settings
 from fs42_live.profile import RETRO
 
 _l = logging.getLogger("FS42LIVE")
@@ -17,7 +17,6 @@ _l = logging.getLogger("FS42LIVE")
 AUDIO_EXTS = {".mp3", ".ogg", ".wav", ".flac", ".aac", ".m4a", ".opus"}
 FIRST_DISPLAY = 100  # Xvfb display = this + channel number, so channels never share one
 DISPLAY_WAIT = 5.0  # seconds to wait for Xvfb to come up
-PAGE_LOAD = 1.0  # let the page draw before capture starts (measured: 0.5 s for the guide, 1 s for WS4KP)
 CHUNK = 64 * 1024
 
 
@@ -54,7 +53,8 @@ class WebPageSource:
                 "--mute-audio", "--force-device-scale-factor=1", "--window-position=0,0",
                 f"--window-size={p.width},{p.height}", f"--user-data-dir={workdir}/profile", self.url,
             )
-            await asyncio.sleep(PAGE_LOAD)
+            # let the page draw first (measured: the guide by 0.5 s; WS4KP shows its splash then, the forecast at 1 s)
+            await asyncio.sleep(self.station.get("live_page_load", settings.get("page_load")))
 
             hw = await asyncio.to_thread(hwaccel.vaapi)
             audio_in, audio_map = self._audio_input(workdir)

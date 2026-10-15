@@ -166,6 +166,7 @@ class StationManager(object):
                     "parental_controls_pin",
                     "parental_controls_theme",
                     "custom_holidays",
+                    "live",  # fs42_live: streaming settings (fs42_live/settings.py)
                 ]
 
                 for key in to_check:

@@ -72,7 +72,7 @@
             if (player) { player.destroy(); player = null; }
             if (raw) {
                 video.disableRemotePlayback = true; // iOS's ManagedMediaSource wants this
-                player = mpegts.createPlayer({ type: "mpegts", isLive: true, url: `/live/stream/${ch.channel}.ts` },
+                player = mpegts.createPlayer({ type: "mpegts", isLive: true, url: `/live/stream/${ch.channel}.ts?surf=1` },
                     { enableStashBuffer: false, liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 3 });
                 player.attachMediaElement(video);
                 player.load();
@@ -81,7 +81,23 @@
                 video.src = `/live/hls/${ch.channel}/index.m3u8`;
             }
             play();
+            warm();
         }
+
+        // keep the channels either side running, so flipping to one is instant; the server
+        // stops any that aren't named again within a few seconds
+        let warmNeighbours = 0;
+        function warm() {
+            if (!warmNeighbours || document.hidden) return;
+            const near = new Set();
+            for (let d = 1; d <= warmNeighbours; d++) {
+                near.add(channels[(current + d) % channels.length].channel);
+                near.add(channels[((current - d) % channels.length + channels.length) % channels.length].channel);
+            }
+            near.delete(channels[current].channel);
+            if (near.size) fetch(`/live/warm?channels=${[...near].join(",")}`, { method: "POST" }).catch(() => {});
+        }
+        setInterval(warm, 2000);
 
         const start = document.getElementById("start");
         function play() {
@@ -139,6 +155,7 @@
             start.textContent = "Warming up…";
             const status = await (await fetch("/live/status")).json();
             channels = status.channels.sort((a, b) => a.channel - b.channel);
+            warmNeighbours = status.warm_neighbours || 0;
             start.hidden = true;
             const wanted = Number(location.hash.slice(1)) || remembered();
             const i = channels.findIndex(c => c.channel === wanted);

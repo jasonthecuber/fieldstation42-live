@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import guide, hls, hwaccel
+from fs42_live import guide, hls, hwaccel, settings
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -24,9 +24,19 @@ def _station(channel):
 
 
 @router.get("/stream/{channel}.ts")
-async def stream_channel(channel: int):
+async def stream_channel(channel: int, surf: bool = False):
     station = _station(channel)
-    return StreamingResponse(hub.watch(station), media_type="video/mp2t")
+    return StreamingResponse(hub.watch(station, surfing=surf), media_type="video/mp2t")
+
+
+@router.post("/warm")
+async def warm(channels: str):
+    """The web player names the channels next to the one it's playing, every few seconds."""
+    for n in channels.split(","):
+        station = StationManager().station_by_channel(int(n)) if n.isdigit() else None
+        if station and station["network_type"] not in guide.NOT_YET_STREAMABLE:
+            hub.warm(station)
+    return {}
 
 
 @router.get("/coming_soon.html")
@@ -67,6 +77,7 @@ async def status():
         channels.append(entry)
     return {
         "channels": channels,
+        "warm_neighbours": settings.get("warm_neighbours"),
         "encoder": f"Quick Sync (h264_vaapi on {hwaccel.DEVICE})" if hw else "CPU (libx264)",
         "profile": f"{p.width}x{p.height} @ {p.fps} fps, video {p.video_bitrate} (max {p.video_maxrate}), "
                    f"audio AAC {p.audio_bitrate}",

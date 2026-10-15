@@ -2,13 +2,13 @@ import asyncio
 import logging
 import time
 
+from fs42_live import settings
 from fs42_live.scheduled_source import ScheduledSource
 from fs42_live.web_source import WebPageSource
 from fs42_live.ts import PACKET as TS_PACKET, GopCache
 
 _l = logging.getLogger("FS42LIVE")
 
-IDLE_GRACE = 30.0  # keep an unwatched channel running this long (channel flips, Jellyfin re-probes)
 VIEWER_BACKLOG = 256  # chunks (~16 MB, over a minute of video); a viewer further behind is dropped
 
 
@@ -21,6 +21,7 @@ class _Channel:
         self.closed = False
         self.started = time.monotonic()
         self.bytes_out = 0
+        self.held_until = 0.0  # unwatched, it keeps running until then (time.monotonic())
         self._idle = None
         self._gop = GopCache()
         source = WebPageSource(station) if station["network_type"] == "web" else ScheduledSource(station)
@@ -37,9 +38,14 @@ class _Channel:
         _l.info(f"{self.name}: viewer joined ({len(self.viewers)} watching)")
         return viewer
 
-    def leave(self, viewer):
+    def leave(self, viewer, grace):
         self.viewers.discard(viewer)
         _l.info(f"{self.name}: viewer left ({len(self.viewers)} watching)")
+        self.hold(grace)
+
+    def hold(self, seconds):
+        """Keep running at least this long, watched or not."""
+        self.held_until = max(self.held_until, time.monotonic() + seconds)
         if not self.viewers and not self.closed and self._idle is None:
             self._idle = asyncio.create_task(self._stop_when_idle())
 
@@ -56,7 +62,9 @@ class _Channel:
         }
 
     async def _stop_when_idle(self):
-        await asyncio.sleep(IDLE_GRACE)
+        while (wait := self.held_until - time.monotonic()) > 0:
+            await asyncio.sleep(wait)
+        self._idle = None
         if not self.viewers:
             self._task.cancel()
 
@@ -95,18 +103,28 @@ class ChannelHub:
     def __init__(self):
         self._channels = {}
 
-    async def watch(self, station):
-        """Yield the channel's MPEG-TS bytes until the viewer goes away."""
-        number = station["channel_number"]
-        channel = self._channels.get(number)
-        if channel is None or channel.closed:
-            channel = self._channels[number] = _Channel(station)
+    async def watch(self, station, surfing=False):
+        """Yield the channel's MPEG-TS bytes until the viewer goes away. A surfing viewer (the
+        web player) lets the channel stop sooner, since that player warms the ones it may need."""
+        channel = self._channel(station)
         viewer = channel.join()
         try:
             while (chunk := await viewer.get()) is not None:
                 yield chunk
         finally:
-            channel.leave(viewer)
+            channel.leave(viewer, settings.get("surf_grace" if surfing else "idle_grace"))
+
+    def warm(self, station):
+        """Start a channel ahead of a viewer likely to flip to it. It runs for the surf grace
+        unless warmed again or watched."""
+        self._channel(station).hold(settings.get("surf_grace"))
+
+    def _channel(self, station):
+        number = station["channel_number"]
+        channel = self._channels.get(number)
+        if channel is None or channel.closed:
+            channel = self._channels[number] = _Channel(station)
+        return channel
 
     def status(self):
         """Running channels by number."""
