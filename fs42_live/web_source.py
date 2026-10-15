@@ -17,7 +17,7 @@ _l = logging.getLogger("FS42LIVE")
 AUDIO_EXTS = {".mp3", ".ogg", ".wav", ".flac", ".aac", ".m4a", ".opus"}
 FIRST_DISPLAY = 100  # Xvfb display = this + channel number, so channels never share one
 DISPLAY_WAIT = 5.0  # seconds to wait for Xvfb to come up
-PAGE_LOAD = 3.0  # let the page draw before capture starts, so viewers don't see a blank browser
+PAGE_LOAD = 1.0  # let the page draw before capture starts (measured: 0.5 s for the guide, 1 s for WS4KP)
 CHUNK = 64 * 1024
 
 

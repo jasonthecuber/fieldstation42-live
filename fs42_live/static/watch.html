@@ -3,13 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>FieldStation42 Live</title>
     <style>
         html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden;
                      font-family: "Courier New", monospace; }
         video { width: 100%; height: 100%; object-fit: contain; background: #000; }
-        #snow { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+        /* the shows are 4:3, so the static is too, leaving the channel number and buttons outside it */
+        #snow { position: fixed; inset: 0; margin: auto; width: min(100vw, calc(100vh * 4 / 3)); height: min(100vh, calc(100vw * 3 / 4)); image-rendering: pixelated; pointer-events: none; }
         #snow.hidden { display: none; }
         #osd { position: fixed; top: 6%; right: 6%; font-size: clamp(28px, 7vw, 72px); color: #3f3;
                text-shadow: 3px 3px 0 #000; pointer-events: none; transition: opacity .4s; text-align: right; }
