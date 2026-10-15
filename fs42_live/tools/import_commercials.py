@@ -118,14 +118,16 @@ def find_crop(path):
 
 
 def save_spot(source, start, end, crop, out):
+    # written as a hidden file until done, so a catalog scan never picks up half a spot
+    partial = os.path.join(os.path.dirname(out), "." + os.path.basename(out))
     # trim a few frames off each end so no black or the neighbouring spot shows
     start, end = start + 0.1, end - 0.1
     vf = (f"crop={crop}," if crop else "") + "scale=640:480,setsar=1"
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-i", source, "-t", f"{end - start:.3f}",
                     "-vf", vf, "-af", f"loudnorm=I={LOUDNESS}:TP=-2:LRA=11,aresample=48000", "-ac", "2",
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p", "-threads", "2",
-                    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out + ".part.mp4"], check=True)
-    os.rename(out + ".part.mp4", out)
+                    "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-f", "mp4", partial], check=True)
+    os.rename(partial, out)
 
 
 if __name__ == "__main__":

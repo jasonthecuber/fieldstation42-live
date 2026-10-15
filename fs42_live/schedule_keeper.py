@@ -13,6 +13,7 @@ from fs42.liquid_api import LiquidAPI
 from fs42.liquid_manager import LiquidManager
 from fs42.liquid_schedule import LiquidSchedule
 from fs42.station_manager import StationManager
+from fs42_live.catalog_watcher import refresh_changed_catalogs
 
 _l = logging.getLogger("FS42LIVE")
 
@@ -29,10 +30,16 @@ TRIGGER_DELTAS = {
 async def keep_schedules_built():
     while True:
         try:
-            await asyncio.to_thread(extend_if_needed)
+            await asyncio.to_thread(refresh_and_extend)
         except Exception:
             _l.exception("schedule keeper: check failed")
         await asyncio.sleep(CHECK_EVERY)
+
+
+def refresh_and_extend():
+    # new media first, so time added below can use it
+    refresh_changed_catalogs()
+    extend_if_needed()
 
 
 def extend_if_needed():
