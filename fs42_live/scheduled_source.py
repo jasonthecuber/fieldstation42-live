@@ -115,11 +115,16 @@ class ScheduledSource:
             await encodes.put(None)
 
     def _segment_at(self, when):
-        try:
-            pp = LiquidManager().get_play_point(self.network, when + NUDGE)
-        except Exception as e:  # no schedule built, or it has run out
-            _l.warning(f"{self.network}: no play point ({e}); showing standby")
-            pp = None
+        for attempt in range(3):
+            try:
+                pp = LiquidManager().get_play_point(self.network, when + NUDGE)
+                break
+            except Exception as e:  # no schedule built, it has run out, or it is mid-reload
+                if attempt < 2:
+                    time.sleep(0.2)  # a reload empties the schedules briefly; this runs in a thread
+                    continue
+                _l.warning(f"{self.network}: no play point ({e}); showing standby")
+                pp = None
         if pp is None:
             return self._slate(SLATE_SECONDS)
         entry = pp.plan[pp.index]
