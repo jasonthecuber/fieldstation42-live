@@ -45,7 +45,8 @@
   #head div { padding-left: 8px; border-left: 2px solid #222; box-sizing: border-box; }
   #head .day { width: 100px; border-left: 0; color: #ffd400; }
   #head .slot { width: 180px; }
-  #rows { position: absolute; top: 28px; left: 0; width: 640px; will-change: transform; }
+  #body { position: absolute; top: 28px; left: 0; width: 640px; height: 208px; overflow: hidden; }
+  #rows { width: 640px; }
   .row { display: flex; height: 52px; }
   .row > div {
     box-sizing: border-box; height: 52px; padding: 4px 7px; overflow: hidden;
@@ -73,7 +74,7 @@
   </div>
   <div id="grid">
     <div id="head"></div>
-    <div id="rows"></div>
+    <div id="body"><div id="rows"></div></div>
   </div>
 </div>
 <script>
