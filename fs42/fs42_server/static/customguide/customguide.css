@@ -170,8 +170,16 @@ body {
 }
 
 /* fs42_live: episode title under the show */
+.show-title:has(.show-episode) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 0.5ch;
+}
+
 .show-episode {
-  display: block;
+  order: 1; /* below the show, with "(cont)" staying beside it */
+  flex-basis: 100%;
   font-size: 0.85em;
   opacity: 0.75;
 }
