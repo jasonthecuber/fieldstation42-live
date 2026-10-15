@@ -129,7 +129,7 @@ Extend the upstream web console instead of building a new one:
 | M3 (done) | Guide channel as a stream; "Coming Soon" placeholder channels | Retro guide playable in Jellyfin |
 | M4 (done) | Weather channel | WS4KP forecast with music playable in Jellyfin |
 | M5 (done) | Live page in the control panel + packaging (`docker/setup.sh`, `SETUP.md`) | A fresh Beelink is set up from the compose file + script |
-| M6 | Content rotation, commercials import pipeline (`tools/import_commercials.py`, done: 317 '80s spots on Miami Vice), catalogs that follow their folders (`catalog_watcher.py`, done), real bumpers | |
+| M6 (done) | Content rotation, commercials import pipeline (`tools/import_commercials.py`, done: 317 '80s spots on Miami Vice), catalogs that follow their folders (`catalog_watcher.py`, done), real bumpers (done: four 1986 NBC Miami Vice bumpers) | Breaks use real '80s spots and bumpers; new or removed media is picked up without a manual rebuild |
 | M7 | Natural break points: scan episodes for fade-to-black + silence (ffmpeg `blackdetect`/`silencedetect`) and schedule commercial breaks there | Breaks land on the show's own act breaks |
 | M8 | Native TV apps (Roku, Android TV/Onn) that play our streams directly: channel up/down surfing, number entry, the retro guide as an overlay. Jellyfin's TV clients don't map channel up/down, so surfing needs our own player | Surfing with the remote's channel buttons |
 

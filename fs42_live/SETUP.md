@@ -55,6 +55,8 @@ docker exec fs42-live python3 fs42_live/tools/import_commercials.py catalog/miam
 
 The second argument is the archive.org item (the part of its address after `/details/`). Any further arguments pick only the files whose names contain them. Other good items: `one-hour-of-1980s-tv-commercials-80s-commercial-compilation-1` and `television-beer-commercials-1970s-1980s`. For a kids' channel, use the Saturday-morning files of `Vintage_Commercials_Advertisements_80s`.
 
+Bumpers ("Miami Vice will continue…") are too few per tape to split automatically, so they're cut by hand. The four in `bump/` come from archive.org items `capture-a-2454` (KRON, at 64.2–71.1, 160.0–165.3 and 169.4–172.6 s) and `nbc-commercial-breaks-september-12-1986` (KING, at 296.1–303.1 s), saved with `save_spot` from the importer. Bumps in `bump/` play on either side of a break. To keep one to its side, put it in `bump/pre/` (going into the break) or `bump/post/` (coming back).
+
 Until you have real ones, this makes color-bar stand-ins for both folders:
 
 ```sh
