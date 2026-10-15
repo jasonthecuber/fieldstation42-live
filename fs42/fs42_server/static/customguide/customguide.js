@@ -201,7 +201,7 @@ function buildScrollStrip(slots, schedules) {
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'channel-name';
-      const name = station.network_name;
+      const name = station.live_display_name || station.network_name;
       nameSpan.textContent = name.length > 10 ? name.slice(0, 10) + '…' : name;
 
       channelInfo.appendChild(numSpan);
@@ -214,6 +214,15 @@ function buildScrollStrip(slots, schedules) {
       if (result) {
         const t = result.block.title || offairText;
         titleSpan.textContent = t.length > 20 ? t.slice(0, 20) + '…' : t;
+        // fs42_live: the episode on a second line, when the listing knows it
+        const meta = result.block.meta;
+        const ep = meta && meta.type === 'episode' && meta.title;
+        if (ep) {
+          const epSpan = document.createElement('span');
+          epSpan.className = 'show-episode';
+          epSpan.textContent = '"' + (ep.length > 18 ? ep.slice(0, 18) + '…' : ep) + '"';
+          titleSpan.appendChild(epSpan);
+        }
         if (result.continued) row.classList.add('continued');
       } else {
         titleSpan.textContent = offairText;
@@ -237,7 +246,7 @@ function stopScrolling() {
 
 async function buildGuide() {
   const slots = computeSlotTimes();
-  const schedules = MOCK ? mockFetchAllSchedules(slots) : await fetchAllSchedules(slots);
+  const schedules = MOCK ? mockFetchAllSchedules(slots) : await fetchAllSchedules(slots, USE_META);
   const listings = document.getElementById('guide-listings');
   listings.innerHTML = '';
   listings.appendChild(buildScrollStrip(slots, schedules));

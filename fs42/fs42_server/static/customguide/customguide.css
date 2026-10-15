@@ -169,6 +169,13 @@ body {
   color: var(--show-title-color);
 }
 
+/* fs42_live: episode title under the show */
+.show-episode {
+  display: block;
+  font-size: 0.85em;
+  opacity: 0.75;
+}
+
 /* Continued indicator appended via CSS */
 .listing-row.continued .show-title::after {
   content: var(--continued-indicator);
