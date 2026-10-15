@@ -14,6 +14,11 @@ RUN sed -i "s/^Components: main$/Components: main non-free non-free-firmware/" /
        intel-media-va-driver-non-free vainfo \
     && rm -rf /var/lib/apt/lists/*
 
+# Web channels (guide, weather): pages are rendered by Chromium on a virtual display
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends chromium xvfb fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY fs42_live/docker/requirements-headless.txt /tmp/requirements-headless.txt

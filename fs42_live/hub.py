@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from fs42_live.scheduled_source import ScheduledSource
+from fs42_live.web_source import WebPageSource
 from fs42_live.ts import PACKET as TS_PACKET, GopCache
 
 _l = logging.getLogger("FS42LIVE")
@@ -19,7 +20,8 @@ class _Channel:
         self.closed = False
         self._idle = None
         self._gop = GopCache()
-        self._task = asyncio.create_task(self._run(ScheduledSource(station)))
+        source = WebPageSource(station) if station["network_type"] == "web" else ScheduledSource(station)
+        self._task = asyncio.create_task(self._run(source))
 
     def join(self):
         if self._idle:

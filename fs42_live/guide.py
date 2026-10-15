@@ -7,9 +7,10 @@ from xml.etree import ElementTree as ET
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
 
-# Station types that need a source other than the schedule (web pages, external streams)
-NOT_YET_STREAMABLE = {"guide", "web", "streaming"}
+# Station types with no live source yet (upstream's Tk guide window, external streams)
+NOT_YET_STREAMABLE = {"guide", "streaming"}
 GUIDE_HISTORY = datetime.timedelta(hours=6)  # how far back the guide starts
+WEB_LISTINGS = datetime.timedelta(days=7)  # how far ahead web channels get listings
 EPISODE = re.compile(r"\bS(\d+)E(\d+)(?:-?E\d+)*\b\s*(.*)", re.IGNORECASE)
 
 
@@ -43,6 +44,9 @@ def xmltv():
 
     since = datetime.datetime.now() - GUIDE_HISTORY
     for s in stations:
+        if s["network_type"] == "web":
+            _web_listings(tv, s, since)
+            continue
         for block in LiquidManager().get_schedule_by_name(s["network_name"]) or []:
             if block.end_time > since:
                 _programme(tv, channel_id(s), block)
@@ -67,6 +71,16 @@ def _programme(tv, channel, block):
     elif content_title and content_title != block.title:
         ET.SubElement(prog, "sub-title").text = content_title
     ET.SubElement(prog, "previously-shown")
+
+
+def _web_listings(tv, station, since):
+    # a web channel shows the same thing all day; list it hourly so guides draw a normal grid
+    hour = since.replace(minute=0, second=0, microsecond=0)
+    while hour < since + GUIDE_HISTORY + WEB_LISTINGS:
+        prog = ET.SubElement(tv, "programme", start=_xmltv_time(hour),
+                             stop=_xmltv_time(hour + datetime.timedelta(hours=1)), channel=channel_id(station))
+        ET.SubElement(prog, "title").text = station["network_name"]
+        hour += datetime.timedelta(hours=1)
 
 
 def _xmltv_time(when):
