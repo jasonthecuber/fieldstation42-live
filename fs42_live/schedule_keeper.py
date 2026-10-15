@@ -15,7 +15,7 @@ from fs42.liquid_api import LiquidAPI
 from fs42.liquid_manager import LiquidManager
 from fs42.liquid_schedule import LiquidSchedule
 from fs42.station_manager import StationManager
-from fs42_live.break_finder import scan_new_episodes
+from fs42_live.break_finder import rebuilt, scan_new_episodes
 from fs42_live.catalog_watcher import refresh_changed_catalogs
 
 _l = logging.getLogger("FS42LIVE")
@@ -86,6 +86,7 @@ def rebuild(stations):
             _l.info(f"break finder: rebuilding {station['network_name']}'s schedule with the new breaks")
             LiquidManager().reset_schedule(station)
         extend_if_needed()
+    rebuilt(stations)
 
 
 def extend_if_needed():

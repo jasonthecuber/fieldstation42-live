@@ -8,6 +8,7 @@ few of those (some run the music straight through) keep upstream's evenly spaced
 """
 
 import datetime
+import json
 import logging
 import os
 import re
@@ -30,17 +31,18 @@ SILENT = 0.3  # ...of which this much is also quiet
 SILENCE_DB = -40  # dB; fades often stop short of true silence
 SHORTEST_ACT = 180  # seconds; also how close to the start or end a break may be
 FEWEST_BREAKS = 3  # fewer found isn't a pattern to trust
+PENDING = "runtime/break_finder_rebuild.json"  # stations whose schedules still need the new breaks
 
 
 def scan_new_episodes():
-    """Finds breaks in each episode not scanned yet. Returns the stations whose built
-    schedule plays any of those episodes later on, so it was planned without them."""
+    """Finds breaks in each episode not scanned yet. Returns the stations to rebuild: those
+    whose built schedule plays any of those episodes later on, so it was planned without them.
+    They're kept on disk until rebuilt, since a scan takes hours and the server may restart."""
     fluid = FluidBuilder()
-    replan = []
+    pending = _pending()
     for station in StationManager().stations:
         if not station.get("_has_catalog"):
             continue
-        scanned_now = set()
         for entry in CatalogAPI.get_entries(station):
             if entry.content_type != "feature" or entry.duration < SHORTEST_EPISODE:
                 continue
@@ -57,10 +59,28 @@ def scan_new_episodes():
             else:
                 _l.info(f"break finder: {entry.title}: no clear act breaks; keeping evenly spaced ones")
             store(fluid, path, as_segments(points, entry.duration))
-            scanned_now.add(path)
-        if scanned_now and station.get("_has_schedule") and plays_later(station, scanned_now):
-            replan.append(station)
-    return replan
+            name = station["network_name"]
+            if name not in pending and station.get("_has_schedule") and plays_later(station, {path}):
+                pending.add(name)
+                _save_pending(pending)
+    return [s for s in StationManager().stations if s["network_name"] in pending]
+
+
+def rebuilt(stations):
+    _save_pending(_pending() - {s["network_name"] for s in stations})
+
+
+def _pending():
+    try:
+        with open(PENDING) as f:
+            return set(json.load(f))
+    except FileNotFoundError:
+        return set()
+
+
+def _save_pending(names):
+    with open(PENDING, "w") as f:
+        json.dump(sorted(names), f)
 
 
 def find_breaks(path, duration):
