@@ -98,6 +98,7 @@
             if (near.size) fetch(`/live/warm?channels=${[...near].join(",")}`, { method: "POST" }).catch(() => {});
         }
         setInterval(warm, 2000);
+        document.addEventListener("visibilitychange", warm); // back from another tab: warm again right away
 
         const start = document.getElementById("start");
         function play() {

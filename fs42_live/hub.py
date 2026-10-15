@@ -22,6 +22,7 @@ class _Channel:
         self.started = time.monotonic()
         self.bytes_out = 0
         self.held_until = 0.0  # unwatched, it keeps running until then (time.monotonic())
+        self.warmed_until = 0.0  # ...because a viewer next door may flip to it
         self._idle = None
         self._gop = GopCache()
         source = WebPageSource(station) if station["network_type"] == "web" else ScheduledSource(station)
@@ -59,6 +60,7 @@ class _Channel:
             "uptime": round(uptime),
             "kbps": round(self.bytes_out * 8 / 1000 / uptime) if uptime > 0 else 0,
             "idle_stop_pending": self._idle is not None,
+            "warm": not self.viewers and time.monotonic() < self.warmed_until,
         }
 
     async def _stop_when_idle(self):
@@ -117,7 +119,9 @@ class ChannelHub:
     def warm(self, station):
         """Start a channel ahead of a viewer likely to flip to it. It runs for the surf grace
         unless warmed again or watched."""
-        self._channel(station).hold(settings.get("surf_grace"))
+        channel = self._channel(station)
+        channel.warmed_until = time.monotonic() + settings.get("surf_grace")
+        channel.hold(settings.get("surf_grace"))
 
     def _channel(self, station):
         number = station["channel_number"]

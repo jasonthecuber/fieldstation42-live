@@ -13,6 +13,7 @@
         .live table { width: 100%; margin: 1em 0; }
         .live td, .live th { vertical-align: middle; }
         .live .state-on { font-weight: bold; }
+        .live .state-warm { font-style: italic; }
         .live .muted { opacity: 0.6; }
         .live code { user-select: all; word-break: break-all; }
         .live dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4em 1em; }
@@ -73,6 +74,7 @@
         function row(c) {
             const status = !c.running ? '<span class="muted">idle</span>'
                 : c.viewers ? '<span class="state-on">streaming</span>'
+                : c.warm ? '<span class="state-warm">warm</span>'
                 : 'stopping soon';
             const cell = document.createElement('tr');
             cell.innerHTML = `
