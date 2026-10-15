@@ -1,4 +1,5 @@
-"""HLS output, for players that can't take a raw MPEG-TS stream (Safari, the web player).
+"""HLS output, for players that can't take a raw MPEG-TS stream. The web player only uses it
+without Media Source Extensions (iPhones before iOS 17.1), since the raw stream starts faster.
 
 A channel watched over HLS gets one packager: a viewer of the channel's shared stream, piped
 into ffmpeg, which cuts it into segments on keyframes without re-encoding. HLS players fetch
@@ -17,10 +18,10 @@ from fs42_live.hub import hub
 _l = logging.getLogger("FS42LIVE")
 
 ROOT = "/dev/shm/fs42_hls"  # in memory: segments only live a few seconds
-SEGMENT = 2  # seconds; keyframes are every second
-LIST_SIZE = 6  # segments in the playlist
+SEGMENT = 1  # seconds; keyframes are every second
+LIST_SIZE = 10  # segments in the playlist
 IDLE_STOP = 30  # seconds without a fetch
-FIRST_PLAYLIST_WAIT = 20  # seconds; a channel that isn't running yet has to start first
+FIRST_PLAYLIST_WAIT = 15  # seconds; a channel that isn't running yet has to start first
 FIRST_SEGMENTS = 3  # players stall on a thinner live playlist
 
 

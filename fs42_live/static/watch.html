@@ -9,6 +9,8 @@
         html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden;
                      font-family: "Courier New", monospace; }
         video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+        #snow { position: fixed; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+        #snow.hidden { display: none; }
         #osd { position: fixed; top: 6%; right: 6%; font-size: clamp(28px, 7vw, 72px); color: #3f3;
                text-shadow: 3px 3px 0 #000; pointer-events: none; transition: opacity .4s; text-align: right; }
         #osd small { display: block; font-size: .45em; }
@@ -25,21 +27,23 @@
 </head>
 <body>
     <video id="tv" playsinline></video>
+    <canvas id="snow" width="160" height="120"></canvas>
     <div id="osd" class="hidden"></div>
     <div id="controls" class="hidden">
         <button id="up" aria-label="Channel up">&#9650;</button>
         <button id="down" aria-label="Channel down">&#9660;</button>
     </div>
     <button id="start">&#9654; Tap to turn on</button>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.js"></script>
     <script>
         const video = document.getElementById("tv");
         const osd = document.getElementById("osd");
         const controls = document.getElementById("controls");
-        // hls.js where it runs (it recovers from more); native HLS otherwise (older iPhones)
-        const native = !Hls.isSupported();
-        const STALL = 25000; // ms without the picture moving (a cold channel takes up to 20 s)
-        let channels = [], current = 0, hls = null, typed = "", typedTimer, osdTimer;
+        // The raw TS stream starts fastest (no segments to wait for); it needs Media Source
+        // Extensions, which iPhones only have from iOS 17.1. Older ones get HLS.
+        const raw = mpegts.getFeatureList().mseLivePlayback;
+        const STALL = 15000; // ms without the picture moving
+        let channels = [], current = 0, player = null, retry, typed = "", typedTimer, osdTimer;
         let lastTime = -1, lastMoved = 0;
 
         function remember(n) { try { localStorage.setItem("fs42-channel", n); } catch (e) {} }
@@ -53,24 +57,27 @@
             osdTimer = setTimeout(() => { osd.classList.add("hidden"); controls.classList.add("hidden"); }, 3000);
         }
 
+        function retune() { clearTimeout(retry); retry = setTimeout(() => tune(current), 2000); }
+
         function tune(index) {
+            clearTimeout(retry);
             current = (index + channels.length) % channels.length;
             const ch = channels[current];
             showOsd(ch.channel, ch.display);
             remember(ch.channel);
             history.replaceState(null, "", "#" + ch.channel);
-            const url = `/live/hls/${ch.channel}/index.m3u8`;
             lastMoved = Date.now();
-            if (native) {
-                video.src = url;
+            snow.classList.remove("hidden");
+            if (player) { player.destroy(); player = null; }
+            if (raw) {
+                video.disableRemotePlayback = true; // iOS's ManagedMediaSource wants this
+                player = mpegts.createPlayer({ type: "mpegts", isLive: true, url: `/live/stream/${ch.channel}.ts` },
+                    { enableStashBuffer: false, liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 3 });
+                player.attachMediaElement(video);
+                player.load();
+                player.on(mpegts.Events.ERROR, retune);
             } else {
-                if (hls) hls.destroy();
-                hls = new Hls({ liveSyncDurationCount: 3, manifestLoadingTimeOut: 20000 });
-                hls.loadSource(url);
-                hls.attachMedia(video);
-                hls.on(Hls.Events.ERROR, (_, data) => {
-                    if (data.fatal) setTimeout(() => tune(current), 2000);
-                });
+                video.src = `/live/hls/${ch.channel}/index.m3u8`;
             }
             play();
         }
@@ -83,7 +90,21 @@
             });
         }
 
-        video.addEventListener("error", () => native && setTimeout(() => tune(current), 2000));
+        video.addEventListener("error", () => !raw && retune());
+        video.addEventListener("playing", () => snow.classList.add("hidden"));
+
+        // static while a channel tunes in, like an old set
+        const snow = document.getElementById("snow");
+        const ctx = snow.getContext("2d");
+        const noise = ctx.createImageData(snow.width, snow.height);
+        (function drawSnow() {
+            if (!snow.classList.contains("hidden")) {
+                const d = noise.data;
+                for (let i = 0; i < d.length; i += 4) { d[i] = d[i + 1] = d[i + 2] = Math.random() * 255; d[i + 3] = 255; }
+                ctx.putImageData(noise, 0, 0);
+            }
+            requestAnimationFrame(drawSnow);
+        })();
         setInterval(() => {
             if (!channels.length || video.paused) return;
             if (video.currentTime !== lastTime) { lastTime = video.currentTime; lastMoved = Date.now(); }
