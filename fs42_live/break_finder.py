@@ -65,7 +65,7 @@ def scan_new_episodes():
 
 def find_breaks(path, duration):
     log = subprocess.run(
-        ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-threads", "1", "-i", path,
+        ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-i", path,
          "-vf", f"blackdetect=d={BLACK}:pix_th=0.1:pic_th=0.95",
          "-af", f"silencedetect=n={SILENCE_DB}dB:d=0.1", "-f", "null", "-"],
         capture_output=True, text=True, check=True).stderr
