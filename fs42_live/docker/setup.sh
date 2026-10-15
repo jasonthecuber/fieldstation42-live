@@ -45,6 +45,7 @@ else
     ask TZ "Viewers' time zone (should match Jellyfin's)" "$host_tz"
     ask FS42_PORT "Port for the web console and streams" "4242"
     [ -d "$MEDIA_ROOT" ] || die "$MEDIA_ROOT doesn't exist."
+    [ -f "/usr/share/zoneinfo/$TZ" ] || die "unknown time zone $TZ (expected something like America/Chicago)."
     render_gid=$(getent group render | cut -d: -f3 || true)
     video_gid=$(getent group video | cut -d: -f3 || true)
     cat > .env <<EOF
