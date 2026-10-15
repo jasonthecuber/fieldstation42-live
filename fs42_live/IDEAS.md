@@ -67,3 +67,6 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
 
 - **Movies channel (ch 7):** Jason has a few retro movies in `/mnt/storage/Movies` (the "Old
   Drive"). Enough to start the channel, with HBO-style intros and "Next on" slates.
+- **Shared '80s commercials:** move them out of `catalog/miami_vice/commercial/` into a shared
+  folder (e.g. `catalog/_shared/commercials_80s`) and link it into each '80s channel, once a
+  second channel needs them.
