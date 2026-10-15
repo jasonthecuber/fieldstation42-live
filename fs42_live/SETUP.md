@@ -107,6 +107,26 @@ Make a catalog folder with the videos (a symlink to wherever they live is fine),
 
 `live_captions` lists the clip folders that get captions. `live_titles` names the clip show in the guides; otherwise they show the folder name. After renaming or adding videos, rebuild the station's catalog and schedule (`station_42.py -r Music`, then `-w Music`), because the schedule refers to files by name.
 
+## A movie channel
+
+Link the movies into a catalog folder with clean names, since the guides show the file name (`Clue (1985).mp4` is listed as "Clue"). Link `commercial` in as for a show channel, then make the channel's cards:
+
+```sh
+docker exec fs42-live sh fs42_live/tools/make_movie_cards.sh catalog/movies FS42 MOVIES "MOVIE CLASSICS"
+```
+
+That makes "Our Feature Presentation" (`intro/`), an ident going into the break between movies (`bump/pre/`), another coming back (`bump/post/`), and `runtime/movies_still.png` for gaps too short for any commercial. The station:
+
+```json
+"network_type": "standard", "schedule_increment": 15, "break_strategy": "end",
+"content_dir": "catalog/movies", "commercial_dir": "commercial", "bump_dir": "bump",
+"be_right_back_media": "runtime/movies_still.png",
+"tag_overrides": {"movies": {"start_bump": "intro/feature_presentation.mp4"}},
+"day_templates": {"daily": {"0": {"tags": "movies"}, "...": "every hour to 23"}}
+```
+
+`break_strategy: end` plays each movie straight through with the break after it. `schedule_increment: 15` starts movies on the quarter hour, so breaks run up to 15 minutes; with 30 or 60 they'd be longer.
+
 ## A Prevue-style guide channel
 
 Besides the TV Guide on ch 3, there's a guide in the style of the old Prevue channel: a live preview of each scheduled channel in turn up top, and the listings scrolling below. Add it as a web station:

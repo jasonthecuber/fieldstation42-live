@@ -68,6 +68,7 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   - Scope (2026-10-15 brainstorm): keep on-demand to the FS42 catalog, where retro mode is the
     point. For the rest of the library, Jellyfin already does it well (continue watching,
     users, metadata), so link out to it. If anything, a per-device "resume" for retro mode.
+    A series rolls on into its next episode, breaks and all.
 
 ## Server landing page
 
@@ -105,8 +106,14 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   idents in `catalog/music/bump`, and split by decade into two channels once there are more
   videos.
 
-- **Movies channel (ch 7):** Jason has a few retro movies in `/mnt/storage/Movies` (the "Old
-  Drive"). Enough to start the channel, with HBO-style intros and "Next on" slates.
+- **Movies channel (ch 7)** is live (2026-10-15): 9 retro movies from the Old Drive and the
+  torrents folder, starting on the quarter hour, with "Our Feature Presentation" before each
+  and a break of FS42 idents and '80s ads after. Later: real '80s movie trailers in the breaks
+  instead of ads (archive.org has trailer reels), "Next on" slates per movie, and A Christmas
+  Story only in December.
+- **Even out loudness per file.** The live encoder plays files at their own volume. The movies
+  range from -19 to -29 LUFS (See No Evil is the quiet one); the ads are -22. Measure each
+  file once, like the act-break scan, and apply a gain.
 - **Shared '80s commercials:** move them out of `catalog/miami_vice/commercial/` into a shared
   folder (e.g. `catalog/_shared/commercials_80s`) and link it into each '80s channel, once a
   second channel needs them.
