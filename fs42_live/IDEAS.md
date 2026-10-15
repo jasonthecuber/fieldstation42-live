@@ -9,12 +9,6 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   text on top, a scrolling grid below. Let each install turn on either guide or both.
   *Note:* doable as a web channel. A Chromium page can play another channel's stream in a
   `<video>` element above our own grid. Needs HLS output (see Players).
-- **Episode titles in the retro guide.** Miami Vice shows only "Miami Vice". The episode name
-  is in the catalog (e.g. "S01E23 Lombard"), so listings could carry it. It might not fit;
-  try "Miami Vice: Lombard" and see how the theme truncates it.
-- **Channel name with a space** ("Miami Vice", not "MiamiVice"). `network_name` is the key
-  for the schedule, catalog and state files, so look for a display-name field before
-  renaming it.
 
 ## Presentation (HBO-style)
 
@@ -49,12 +43,9 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
 ## Streaming
 
 - **Roku start-up is slower than other clients.** Jellyfin repackages our stream as HLS and
-  the Roku buffers a few chunks first. Try a shorter keyframe interval, then our own HLS.
+  the Roku buffers a few chunks first. Keyframes are every 1 s now (was 2 s, 2026-10-15); if still slow, our own HLS.
 - **A ~0.5 s pause once on the Roku.** Note whether it happens at show/commercial switches
   (ours) or randomly (Roku buffering).
-- **Skip missing files** "just in case": if a scheduled file was deleted, move to the next
-  segment instead of showing the standby slate until the catalog watcher catches up.
-
 ## Packaging for Noel
 
 - **Set up the whole box, not just fs42-live.** Noel's Beelink needs Jason's full stack

@@ -65,7 +65,7 @@ The server notices new or removed files in a station's folder within the hour (o
 
 Then open the web console at `http://<server>:4242/` and go to **Stations**:
 
-1. Add a station with `content_dir` set to `catalog/miami_vice`. Give it a short name: Jellyfin's TV guide shows only about one word of it.
+1. Add a station with `content_dir` set to `catalog/miami_vice`. Give it a short name: Jellyfin's TV guide shows only about one word of it. The name is also the station's internal key, so to show it differently (e.g. with a space), add `"live_display_name": "Miami Vice"` to the station's config.
 2. Build its catalog.
 
 Schedules are built a week ahead and extended automatically. The **Live** page shows each channel's status and how far its schedule is built.

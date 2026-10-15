@@ -104,6 +104,8 @@ Extend the upstream web console instead of building a new one:
   1. register the `fs42_live` router in `fs42_server.py` (a few lines; it could even
      be an upstream PR as a generic plugin hook)
   2. a nav link in the web console
+  3. the retro guide (`static/customguide`) shows `live_display_name` and episode titles,
+     and `summary/channels` passes `live_display_name` through
 - Packaging: `fs42_live/docker/` with a headless image (Python, ffmpeg with Intel
   media driver, Chromium, Xvfb), plus a compose file and setup script. Upstream's
   `docker/` assumes a local X display and stays as-is.
