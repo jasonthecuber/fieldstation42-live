@@ -79,7 +79,7 @@
         function play() {
             video.play().catch(e => {
                 // a phone may want its own tap before playing sound
-                if (e.name === "NotAllowedError") { start.textContent = "25B6 Tap to play"; start.hidden = false; }
+                if (e.name === "NotAllowedError") { start.textContent = "▶ Tap to play"; start.hidden = false; }
             });
         }
 
@@ -112,8 +112,9 @@
         document.getElementById("down").onclick = e => { e.stopPropagation(); tune(current - 1); };
         video.addEventListener("click", () => channels.length && showOsd(channels[current].channel, channels[current].display));
 
-        document.getElementById("start").onclick = async e => {
-            e.target.textContent = "Warming up…";
+        start.onclick = async () => {
+            if (channels.length) { start.hidden = true; play(); return; }
+            start.textContent = "Warming up…";
             const status = await (await fetch("/live/status")).json();
             channels = status.channels.sort((a, b) => a.channel - b.channel);
             start.hidden = true;
