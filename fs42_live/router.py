@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import guide, hwaccel
+from fs42_live import guide, hls, hwaccel
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -14,13 +14,18 @@ router = APIRouter(prefix="/live", tags=["live"])
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 
-@router.get("/stream/{channel}.ts")
-async def stream_channel(channel: int):
+def _station(channel):
     station = StationManager().station_by_channel(channel)
     if station is None:
         raise HTTPException(status_code=404, detail=f"No station on channel {channel}")
     if station["network_type"] in guide.NOT_YET_STREAMABLE:
         raise HTTPException(status_code=501, detail=f"{station['network_type']} stations can't be streamed yet")
+    return station
+
+
+@router.get("/stream/{channel}.ts")
+async def stream_channel(channel: int):
+    station = _station(channel)
     return StreamingResponse(hub.watch(station), media_type="video/mp2t")
 
 
@@ -52,7 +57,7 @@ async def status():
     channels = []
     for s in guide.streamable_stations():
         n = s["channel_number"]
-        entry = {"channel": n, "name": s["network_name"], "type": s["network_type"],
+        entry = {"channel": n, "name": s["network_name"], "display": guide.display_name(s), "type": s["network_type"],
                  "running": n in running, **running.get(n, {})}
         if s["network_type"] != "web":
             try:
@@ -71,3 +76,24 @@ async def status():
 @router.post("/channels/{channel}/restart")
 async def restart_channel(channel: int):
     return {"restarted": hub.restart(channel)}
+
+
+@router.get("/hls/{channel}/index.m3u8")
+async def hls_playlist(channel: int):
+    path = await hls.playlist(_station(channel))
+    if path is None:
+        raise HTTPException(status_code=503, detail=f"Channel {channel} didn't start")
+    return FileResponse(path, media_type="application/vnd.apple.mpegurl", headers={"Cache-Control": "no-cache"})
+
+
+@router.get("/hls/{channel}/{name}.ts")
+async def hls_segment(channel: int, name: str):
+    path = hls.segment(channel, f"{name}.ts") if name.isdigit() else None
+    if path is None:
+        raise HTTPException(status_code=404, detail="No such segment")
+    return FileResponse(path, media_type="video/mp2t")
+
+
+@router.get("/watch")
+async def watch_page():
+    return FileResponse(os.path.join(STATIC, "watch.html"), headers={"Cache-Control": "no-cache"})
