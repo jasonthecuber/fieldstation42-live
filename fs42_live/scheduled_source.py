@@ -151,6 +151,8 @@ class ScheduledSource:
             began = time.monotonic()
             if await self._run_encode(seg, pts, out):
                 return
+            if seg.path and os.path.splitext(seg.path)[1].lower() not in IMAGE_EXTS:
+                refresh_soon()  # renamed under us, or the schedule was rebuilt elsewhere
             # a broken file must not leave a hole, or the stream stalls until the next slot
             done = max(0.0, time.monotonic() - began - STARTUP)
             left = seg.duration - done

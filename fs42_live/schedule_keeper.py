@@ -7,6 +7,7 @@ config) and builds the way the web console's "add time" does: in a thread, then 
 
 import asyncio
 import datetime
+import os
 import logging
 import threading
 import time
@@ -49,6 +50,21 @@ def refresh_and_extend():
         # new media first, so time added below can use it
         refresh_changed_catalogs()
         extend_if_needed()
+        reload_if_changed()
+
+
+_db_seen = None
+
+
+def reload_if_changed():
+    # schedules rebuilt outside this process (station_42.py on the command line) are only
+    # on disk; streams would keep playing the old ones, file names and all
+    global _db_seen
+    mtime = os.path.getmtime(StationManager().server_conf["db_path"])
+    if _db_seen is not None and mtime != _db_seen:
+        _l.info("schedule keeper: schedules changed on disk; reloading")
+        reload_without_gap(LiquidManager())
+    _db_seen = mtime
 
 
 def refresh_soon():
