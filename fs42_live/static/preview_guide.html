@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<!-- Prevue-style guide channel: a live preview of a scheduled channel up top, the listings
+     scrolling below. Listings come from the XMLTV feed Jellyfin uses.
+     /live/preview_guide.html?rotate=40  (seconds per previewed channel) -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview Guide</title>
+<script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }
+  /* drawn at 640x480 (the channel's frame) and scaled to fit any other window */
+  #screen {
+    position: absolute; left: 0; top: 0; width: 640px; height: 480px; overflow: hidden;
+    transform-origin: 0 0; color: #fff;
+    font-family: "Liberation Sans Narrow", "Liberation Sans", sans-serif; font-weight: bold;
+    text-shadow: 2px 2px 0 #000;
+    background: linear-gradient(#0a1a6e, #020a3a 50%);
+  }
+  #screen::after {  /* faint CRT scanlines */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,0.15) 0 1px, transparent 1px 3px);
+  }
+
+  #frame {
+    position: absolute; left: 14px; top: 12px; width: 288px; height: 216px; background: #000;
+    border: 3px solid; border-color: #9fb4ff #1c2a7a #1c2a7a #9fb4ff;
+  }
+  #frame video { width: 100%; height: 100%; object-fit: fill; display: block; }
+  #frame .card {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 40px; letter-spacing: 3px; color: #ffd400;
+  }
+
+  #promo { position: absolute; left: 322px; top: 12px; width: 304px; height: 222px; }
+  #clock { text-align: right; font-size: 30px; }
+  #date { text-align: right; font-size: 16px; color: #c8d2ff; margin-bottom: 12px; }
+  .label { font-size: 15px; letter-spacing: 2px; color: #ffd400; }
+  #now-ch { font-size: 30px; line-height: 1.1; margin: 2px 0 4px; }
+  #now-title { font-size: 21px; line-height: 1.15; max-height: 49px; overflow: hidden; }
+  #next { margin-top: 10px; font-size: 17px; color: #c8d2ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  #grid { position: absolute; left: 0; top: 244px; width: 640px; height: 236px; overflow: hidden; }
+  #head { display: flex; height: 28px; font-size: 17px; line-height: 28px; background: #000; position: relative; z-index: 1; }
+  #head div { padding-left: 8px; border-left: 2px solid #222; box-sizing: border-box; }
+  #head .day { width: 100px; border-left: 0; color: #ffd400; }
+  #head .slot { width: 180px; }
+  #rows { position: absolute; top: 28px; left: 0; width: 640px; will-change: transform; }
+  .row { display: flex; height: 52px; }
+  .row > div {
+    box-sizing: border-box; height: 52px; padding: 4px 7px; overflow: hidden;
+    border: 2px solid; border-color: #5d74e8 #0b1660 #0b1660 #5d74e8;
+  }
+  .row .ch {
+    width: 100px; flex: none; text-align: center; line-height: 1;
+    background: linear-gradient(#c4202a, #7c0c12); border-color: #f0606a #400406 #400406 #f0606a;
+  }
+  .row .ch b { display: block; font-size: 24px; }
+  .row .ch span { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .show { background: #1b2fa8; font-size: 17px; line-height: 21px; }
+</style>
+</head>
+<body>
+<div id="screen">
+  <div id="frame"><video id="video" muted autoplay playsinline></video><div class="card" id="card">PREVIEW</div></div>
+  <div id="promo">
+    <div id="clock"></div>
+    <div id="date"></div>
+    <div class="label">NOW SHOWING</div>
+    <div id="now-ch"></div>
+    <div id="now-title"></div>
+    <div id="next"></div>
+  </div>
+  <div id="grid">
+    <div id="head"></div>
+    <div id="rows"></div>
+  </div>
+</div>
+<script>
+const params = new URLSearchParams(location.search);
+const ROTATE = Number(params.get("rotate")) || 40;  // seconds per previewed channel
+const SPEED = 22;  // grid scroll, px per second
+const SLOT = 30 * 60000, WINDOW = 3 * SLOT, PX = 540 / WINDOW;  // three half hours across 540px
+
+let channels = [];  // [{id, name, number, shows: [{start, stop, title, sub}]}]
+let previews = [];  // channel numbers of scheduled channels
+let previewIndex = -1, player = null;
+
+function fit() {
+  const s = Math.min(innerWidth / 640, innerHeight / 480);
+  const screen = document.getElementById("screen");
+  screen.style.transform = `translate(${(innerWidth - 640 * s) / 2}px, ${(innerHeight - 480 * s) / 2}px) scale(${s})`;
+}
+addEventListener("resize", fit);
+fit();
+
+const time = d => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
+
+function xmltvTime(s) {  // "20261015100000 -0500"
+  const m = s.match(/(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)(\d\d) ([+-])(\d\d)(\d\d)/);
+  const offset = (m[7] === "-" ? -1 : 1) * (Number(m[8]) * 60 + Number(m[9]));
+  return new Date(Date.UTC(m[1], m[2] - 1, m[3], m[4], m[5], m[6]) - offset * 60000);
+}
+
+async function loadListings() {
+  const doc = new DOMParser().parseFromString(await (await fetch("/live/xmltv.xml")).text(), "text/xml");
+  const byId = {};
+  for (const c of doc.querySelectorAll("channel")) {
+    const names = c.querySelectorAll("display-name");
+    byId[c.id] = { id: c.id, name: names[0].textContent, number: Number(names[1].textContent), shows: [] };
+  }
+  for (const p of doc.querySelectorAll("programme")) {
+    byId[p.getAttribute("channel")]?.shows.push({
+      start: xmltvTime(p.getAttribute("start")), stop: xmltvTime(p.getAttribute("stop")),
+      title: p.querySelector("title")?.textContent, sub: p.querySelector("sub-title")?.textContent,
+    });
+  }
+  channels = Object.values(byId).sort((a, b) => a.number - b.number);
+  const status = await (await fetch("/live/status")).json();
+  previews = status.channels.filter(c => c.type === "standard").map(c => c.channel);
+}
+
+function onAt(channel, when) {
+  return channel?.shows.find(s => s.start <= when && when < s.stop);
+}
+
+// --- the scrolling grid ---
+
+let windowStart = 0, scrollY = 0, copyHeight = 0, rebuildDue = true, last = 0;
+
+function buildGrid() {
+  const now = Date.now();
+  windowStart = now - now % SLOT;  // the current half hour
+  const slots = [0, 1, 2].map(i => `<div class="slot">${time(new Date(windowStart + i * SLOT))}</div>`);
+  document.getElementById("head").innerHTML =
+    `<div class="day">${new Date().toLocaleDateString([], { weekday: "short" }).toUpperCase()}</div>` + slots.join("");
+
+  const end = windowStart + WINDOW;
+  const rows = channels.map(c => {
+    const cells = c.shows.filter(s => s.stop > windowStart && s.start < end).map(s => {
+      const from = Math.max(s.start, windowStart), to = Math.min(s.stop, end);
+      const arrows = (s.start < windowStart ? "◂ " : "") + esc(s.title) + (s.stop > end ? " ▸" : "");
+      return `<div class="show" style="width:${Math.round((to - from) * PX)}px">${arrows}</div>`;
+    });
+    if (!cells.length) cells.push(`<div class="show" style="width:540px">${esc(c.name)}</div>`);
+    return `<div class="row"><div class="ch"><b>${c.number}</b><span>${esc(c.name)}</span></div>${cells.join("")}</div>`;
+  }).join("");
+  // two copies, so the list wraps around without a gap
+  document.getElementById("rows").innerHTML = rows + rows;
+  copyHeight = channels.length * 52;
+  rebuildDue = false;
+}
+
+function scroll(t) {
+  const dt = last ? (t - last) / 1000 : 0;
+  last = t;
+  if (copyHeight > 208) {  // only scroll when the rows don't all fit
+    scrollY += SPEED * dt;
+    if (scrollY >= copyHeight) {
+      scrollY -= copyHeight;
+      if (rebuildDue) buildGrid();  // swap in new listings at the wrap, where it can't jump
+    }
+  } else if (rebuildDue) {
+    buildGrid();
+  }
+  document.getElementById("rows").style.transform = `translateY(${-Math.round(scrollY)}px)`;
+  requestAnimationFrame(scroll);
+}
+
+// --- the preview window ---
+
+function showPreview() {
+  if (player) { player.destroy(); player = null; }
+  const card = document.getElementById("card");
+  if (!previews.length || !window.mpegts?.getFeatureList().mseLivePlayback) {
+    card.style.display = "flex";
+    promo(channels[0]);
+    return;
+  }
+  previewIndex = (previewIndex + 1) % previews.length;
+  const number = previews[previewIndex];
+  const video = document.getElementById("video");
+  player = mpegts.createPlayer({ type: "mpegts", isLive: true, url: `/live/stream/${number}.ts?surf=1` },
+                               { enableStashBuffer: false, liveBufferLatencyChasing: true });
+  player.attachMediaElement(video);
+  player.load();
+  video.onplaying = () => { card.style.display = "none"; };
+  card.style.display = "flex";
+  player.play()?.catch?.(() => {});
+  promo(channels.find(c => c.number === number));
+}
+
+function promo(channel) {
+  const now = new Date(), show = onAt(channel, now);
+  document.getElementById("now-ch").textContent = channel ? `${channel.number} ${channel.name.toUpperCase()}` : "";
+  document.getElementById("now-title").textContent = show ? show.title + (show.sub ? `: ${show.sub}` : "") : "";
+  const next = channel?.shows.find(s => s.start >= (show?.stop || now));
+  document.getElementById("next").textContent = next ? `NEXT ${time(next.start)}  ${next.title}` : "";
+}
+
+function tick() {
+  const now = new Date();
+  document.getElementById("clock").textContent = time(now);
+  document.getElementById("date").textContent =
+    now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
+  if (Date.now() - windowStart >= SLOT) rebuildDue = true;  // a new half hour
+}
+
+(async () => {
+  tick();
+  setInterval(tick, 1000);
+  try { await loadListings(); } catch (e) { console.error(e); }
+  buildGrid();
+  requestAnimationFrame(scroll);
+  showPreview();
+  setInterval(showPreview, ROTATE * 1000);
+  setInterval(async () => {  // fresh listings every 5 minutes, swapped in at the next wrap
+    try { await loadListings(); rebuildDue = true; } catch (e) { console.error(e); }
+  }, 5 * 60000);
+})();
+</script>
+</body>
+</html>

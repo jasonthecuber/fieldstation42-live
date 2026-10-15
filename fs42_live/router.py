@@ -44,6 +44,11 @@ async def coming_soon():
     return FileResponse(os.path.join(STATIC, "coming_soon.html"))
 
 
+@router.get("/preview_guide.html")
+async def preview_guide():
+    return FileResponse(os.path.join(STATIC, "preview_guide.html"))
+
+
 @router.get("/channels.m3u")
 async def channels_m3u(request: Request):
     return PlainTextResponse(guide.m3u(str(request.base_url)), media_type="audio/x-mpegurl")
