@@ -1,4 +1,5 @@
 import asyncio
+import collections
 import logging
 import os
 import random
@@ -36,12 +37,14 @@ class WebPageSource:
         self.url = self._full_url(station_conf["web_url"])
         self.display = f":{FIRST_DISPLAY + station_conf['channel_number']}"
         self._procs = []
+        self._tail = collections.deque(maxlen=5)  # last lines from Xvfb and Chromium, for errors
 
     async def stream(self):
         """Yield MPEG-TS bytes for as long as the caller keeps reading."""
         p = self.profile
         workdir = tempfile.mkdtemp(prefix="fs42-web-")
         try:
+            self._clear_stale_display()
             await self._spawn("Xvfb", "Xvfb", self.display, "-screen", "0", f"{p.width}x{p.height}x24",
                               "-nolisten", "tcp")
             await self._wait_for_display()
@@ -77,8 +80,13 @@ class WebPageSource:
             finally:
                 watchdog.cancel()
         finally:
-            for proc in self._procs:
+            for proc in reversed(self._procs):  # encoder, then browser, then Xvfb
                 if proc.returncode is None:
+                    proc.terminate()  # lets Xvfb remove its lock file
+            for proc in self._procs:
+                try:
+                    await asyncio.wait_for(proc.wait(), 2)
+                except asyncio.TimeoutError:
                     proc.kill()
             shutil.rmtree(workdir, ignore_errors=True)
             _l.info(f"{self.network}: stream stopped")
@@ -115,18 +123,31 @@ class WebPageSource:
             return StationManager().local_server_url() + url
         return url
 
+    def _clear_stale_display(self):
+        # Xvfb killed uncleanly (say, by a container restart) leaves these behind, and a new
+        # one then refuses the display. The display number is this channel's alone.
+        n = self.display[1:]
+        for path in (f"/tmp/.X{n}-lock", f"/tmp/.X11-unix/X{n}"):
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+
     async def _wait_for_display(self):
         socket = f"/tmp/.X11-unix/X{self.display[1:]}"
         for _ in range(int(DISPLAY_WAIT / 0.1)):
+            if self._procs[0].returncode is not None:
+                break
             if os.path.exists(socket):
                 return
             await asyncio.sleep(0.1)
-        raise RuntimeError(f"Xvfb didn't start on {self.display}")
+        raise RuntimeError(f"Xvfb didn't start on {self.display}: {list(self._tail)}")
 
     async def _end_with(self, browser, encoder):
         await browser.wait()
         if encoder.returncode is None:
-            _l.error(f"{self.network}: browser exited ({browser.returncode}); ending the stream")
+            _l.error(f"{self.network}: browser exited ({browser.returncode}); ending the stream. "
+                     f"Last output: {list(self._tail)}")
             encoder.kill()
 
     async def _spawn(self, tag, *args, stdout=DEVNULL):
@@ -140,8 +161,11 @@ class WebPageSource:
 
     async def _drain_log(self, proc, tag):
         # stderr must be read, or a chatty process blocks on a full pipe. Chromium is
-        # very chatty about missing hardware it doesn't need, so only ffmpeg is logged.
+        # very chatty about missing hardware it doesn't need, so its output is only kept for errors.
         while line := await proc.stderr.readline():
+            text = line.decode(errors="replace").rstrip()
             if tag == "ffmpeg":
-                _l.warning(f"{self.network} ffmpeg: {line.decode(errors='replace').rstrip()}")
+                _l.warning(f"{self.network} ffmpeg: {text}")
+            else:
+                self._tail.append(f"{tag}: {text}")
         await proc.wait()
