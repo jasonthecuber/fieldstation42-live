@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 
 from fastapi import APIRouter, HTTPException, Request
@@ -11,6 +12,7 @@ from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
 router = APIRouter(prefix="/live", tags=["live"])
+_l = logging.getLogger("FS42LIVE")
 STATIC = os.path.join(os.path.dirname(__file__), "static")
 
 
@@ -47,6 +49,18 @@ async def coming_soon():
 @router.get("/preview_guide.html")
 async def preview_guide():
     return FileResponse(os.path.join(STATIC, "preview_guide.html"))
+
+
+@router.get("/keys.html")
+async def keys_page():
+    return FileResponse(os.path.join(STATIC, "keys.html"), headers={"Cache-Control": "no-cache"})
+
+
+@router.post("/keys/log")
+async def keys_log(request: Request):
+    """The remote test page reports each button press here, so it shows in the server log."""
+    _l.info(f"remote test: {(await request.body()).decode(errors='replace')[:200]}")
+    return {}
 
 
 @router.get("/channels.m3u")

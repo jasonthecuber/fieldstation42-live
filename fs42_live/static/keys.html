@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!-- Remote test: shows every key, wheel and pointer event the browser passes to a page, so we
+     can see which TV remote buttons the player could use. /live/keys.html -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Remote Test</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; font-family: sans-serif; }
+  body.nocursor, body.nocursor * { cursor: none; }
+  #last { font-size: 9vh; font-weight: bold; color: #ffd400; padding: 4vh 4vw 1vh; }
+  #hint { font-size: 3vh; color: #9aa; padding: 0 4vw 2vh; }
+  #log { font: 3.2vh monospace; padding: 0 4vw; white-space: pre; }
+  #toggle { position: fixed; right: 3vw; top: 3vh; font-size: 3vh; padding: 1vh 2vw; background: #1b2fa8;
+            color: #fff; border: 0; }
+</style>
+</head>
+<body class="nocursor">
+<button id="toggle">Cursor: hidden (click to show)</button>
+<div id="last">Press any button</div>
+<div id="hint">Try channel up/down, the arrows, OK, Back, numbers and colour buttons.</div>
+<div id="log"></div>
+<script>
+const log = document.getElementById("log"), last = document.getElementById("last"), lines = [];
+function show(text) {
+  last.textContent = text;
+  lines.unshift(`${new Date().toLocaleTimeString()}  ${text}`);
+  log.textContent = lines.slice(0, 14).join("\n");
+  navigator.sendBeacon?.("/live/keys/log", text);  // so Claude can read them on the server
+}
+addEventListener("keydown", e => {
+  show(`key "${e.key}"  code ${e.code || "-"}  keyCode ${e.keyCode}`);
+  if (e.key !== "Tab") e.preventDefault();  // keep the browser from acting on it, if it lets us
+});
+addEventListener("wheel", e => show(`wheel ${e.deltaY > 0 ? "down" : "up"} (${Math.round(e.deltaY)})`), { passive: true });
+addEventListener("pointerdown", e => show(`click (${e.pointerType || "mouse"}) at ${e.clientX},${e.clientY}`));
+document.addEventListener("visibilitychange", () => show(`page ${document.visibilityState}`));
+document.getElementById("toggle").onclick = e => {
+  e.stopPropagation();
+  const hidden = document.body.classList.toggle("nocursor");
+  e.target.textContent = hidden ? "Cursor: hidden (click to show)" : "Cursor: shown (click to hide)";
+};
+show(`ready: ${navigator.userAgent.match(/Tizen[^;)]*|SamsungBrowser\/[\d.]+|Chrome\/[\d.]+/g)?.join(", ") || "browser"}`);
+</script>
+</body>
+</html>
