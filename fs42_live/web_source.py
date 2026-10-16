@@ -18,6 +18,9 @@ AUDIO_EXTS = {".mp3", ".ogg", ".wav", ".flac", ".aac", ".m4a", ".opus"}
 FIRST_DISPLAY = 100  # Xvfb display = this + channel number, so channels never share one
 DISPLAY_WAIT = 5.0  # seconds to wait for Xvfb to come up
 CHUNK = 64 * 1024
+# music plays through a playlist this many entries long; ffmpeg can't loop a playlist (its seek back
+# to the start fails and the sound stops), so it's written out long enough to run for days
+PLAYLIST_ENTRIES = 10000
 
 
 class WebPageSource:
@@ -96,13 +99,14 @@ class WebPageSource:
         if not tracks:
             p = self.profile
             return ["-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo"], "1:a"
-        random.shuffle(tracks)
         playlist = os.path.join(workdir, "music.txt")
         with open(playlist, "w") as f:
-            for track in tracks:
-                escaped = track.replace("'", "'\\''")
-                f.write(f"file '{escaped}'\n")
-        return ["-re", "-stream_loop", "-1", "-f", "concat", "-safe", "0", "-i", playlist], "1:a:0"
+            for _ in range(max(1, PLAYLIST_ENTRIES // len(tracks))):
+                random.shuffle(tracks)
+                for track in tracks:
+                    escaped = track.replace("'", "'\\''")
+                    f.write(f"file '{escaped}'\n")
+        return ["-re", "-f", "concat", "-safe", "0", "-i", playlist], "1:a:0"
 
     def _music_tracks(self):
         query = urllib.parse.parse_qs(urllib.parse.urlparse(self.url).query)
