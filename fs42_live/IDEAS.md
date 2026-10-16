@@ -122,9 +122,9 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   Old TV cropped them to fill the screen, which loses almost half the width. A per-station
   setting: letterbox (now), full crop, or a middle ground that crops the sides to about 16:9 and
   keeps thin bars.
-- **Even out loudness per file.** The live encoder plays files at their own volume. The movies
+- **Even out loudness per file.** **Done 2026-10-16** (fs42_live/loudness.py, `loudness_target` -24). The movies
   range from -19 to -29 LUFS (See No Evil is the quiet one); the ads are -22. Measure each
-  file once, like the act-break scan, and apply a gain.
+  file once, like the act-break scan, and apply a gain. Web channels (guide music) aren't levelled yet.
 - **Shared '80s commercials:** move them out of `catalog/miami_vice/commercial/` into a shared
   folder (e.g. `catalog/_shared/commercials_80s`) and link it into each '80s channel, once a
   second channel needs them.
