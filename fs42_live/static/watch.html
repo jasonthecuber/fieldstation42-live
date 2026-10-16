@@ -28,6 +28,8 @@
         #controls.hidden { opacity: 0; pointer-events: none; }
         /* a TV browser's pointer (Samsung) hides while it sits still */
         body.idle, body.idle * { cursor: none !important; }
+        /* the same, as a see-through image, so the pointer can be switched between two hidden kinds */
+        body.idle.alt, body.idle.alt * { cursor: url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7) 0 0, none !important; }
         #controls button { width: 64px; height: 64px; border-radius: 50%; border: 2px solid #888;
                            background: rgba(0,0,0,.5); color: #fff; font-size: 28px; cursor: pointer; }
     </style>
@@ -175,7 +177,7 @@
                 typed += k;
                 showOsd(typed + "-");
                 clearTimeout(typedTimer);
-                typedTimer = setTimeout(() => { tuneNumber(Number(typed)); typed = ""; }, 1200);
+                typedTimer = setTimeout(() => { tuneNumber(Number(typed)); typed = ""; hideSoon(); }, 1200);
             } else if (k === "f" || (k === "Enter" && !e.target.closest("button"))) {
                 toggleFull();
             } else return;
@@ -184,7 +186,10 @@
         let idleTimer, keyAt = 0;
         function idle() { clearTimeout(idleTimer); idleTimer = setTimeout(() => document.body.classList.add("idle"), 3000); }
         // a remote button on a Samsung wakes its pointer with a mouse move; hide it again, it isn't wanted
-        document.addEventListener("keydown", () => { keyAt = Date.now(); document.body.classList.add("idle"); });
+        // ...and it only looks at the page's "no pointer" rule when the rule changes, so switch between two hidden kinds
+        function rehide() { document.body.classList.add("idle"); document.body.classList.toggle("alt"); }
+        function hideSoon() { keyAt = Date.now(); rehide(); setTimeout(rehide, 100); setTimeout(rehide, 1000); }
+        document.addEventListener("keydown", hideSoon);
         document.addEventListener("mousemove", () => {
             if (Date.now() - keyAt < 1500) return;
             document.body.classList.remove("idle");
