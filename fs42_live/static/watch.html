@@ -181,9 +181,12 @@
             } else return;
             e.preventDefault(); // so a TV browser doesn't also scroll or move its focus
         });
-        let idleTimer;
+        let idleTimer, keyAt = 0;
         function idle() { clearTimeout(idleTimer); idleTimer = setTimeout(() => document.body.classList.add("idle"), 3000); }
+        // a remote button on a Samsung wakes its pointer with a mouse move; hide it again, it isn't wanted
+        document.addEventListener("keydown", () => { keyAt = Date.now(); document.body.classList.add("idle"); });
         document.addEventListener("mousemove", () => {
+            if (Date.now() - keyAt < 1500) return;
             document.body.classList.remove("idle");
             controls.classList.remove("hidden");  // the pointer is out, so it may want the buttons
             clearTimeout(osdTimer);
@@ -197,7 +200,9 @@
 
         start.onclick = async () => {
             // phones and TVs (no mouse) go full screen when turned on; a PC stays in its window
-            if (!matchMedia("(pointer: fine)").matches) enterFull();
+            // (TV browsers can report a fine pointer, so they're matched by name too)
+            const tv = /Tizen|Web0S|webOS|SMART-TV|SmartTV|Android TV|BRAVIA/i.test(navigator.userAgent);
+            if (tv || !matchMedia("(pointer: fine)").matches) enterFull();
             if (channels.length) { start.hidden = true; play(); return; }
             start.textContent = "Warming up…";
             const status = await (await fetch("/live/status")).json();
