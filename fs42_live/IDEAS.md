@@ -82,6 +82,12 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
 - **Wishlist → archive.org fetcher**: a file of wanted items (commercial reels, bumpers,
   specials, public-domain cartoons and movies) that a tool searches on archive.org and
   downloads into the right catalog folder, like `import_commercials.py`. A small UI later.
+- **Disc ripping station** (Jason, 2026-10-16; flea-market DVDs and Blu-rays). Automatic Ripping
+  Machine (ARM, Docker) on the Beelink with a USB drive: insert a disc, it identifies, rips
+  (MakeMKV), optionally transcodes (HandBrake, Quick Sync), names and ejects. Movies file
+  cleanly; TV box sets land in a "to sort" folder for the sorter below. The host setting (udev)
+  and /mnt/storage writes are Jason's side: Claude drafts, Jason applies. Check the Blu-ray
+  drive model against MakeMKV before buying.
 - **Sorter for finished downloads**: move or link completed files into the right show/catalog
   folder with clean names. Claude won't build torrent searching.
 
