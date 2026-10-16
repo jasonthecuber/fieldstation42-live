@@ -42,6 +42,10 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     can't be found by anyone who doesn't already know them, so they'd suit the hidden modes,
     e.g. a remote code like up-up-down-down (Konami style) on a TV. Moving full screen off OK
     once OK opens the menu.
+  - **"Report a problem" in the menu** (Jason, 2026-10-16). A viewer (Noel, family) writes what's wrong;
+    the server saves it with the channel, the time and the file playing at that moment (from the
+    schedule, with the position in it), so it can be found and fixed later. Reports show on the
+    live page, and Claude can read them from the server. A description is required.
   - Test on the Onn with a TV browser (TV Bro): d-pad up/down surfs, OK goes full screen.
   - **Theater room**: the Onn stick with a browser now; later a small Android TV app that
     wraps `/live/watch` in a full-screen WebView (no browser bars, starts from the home
@@ -128,3 +132,7 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
 - **Shared '80s commercials:** move them out of `catalog/miami_vice/commercial/` into a shared
   folder (e.g. `catalog/_shared/commercials_80s`) and link it into each '80s channel, once a
   second channel needs them.
+- **Show-specific bumpers hidden among the ads** (Jason, 2026-10-16): spots like "now back to Alvin
+  and the Chipmunks" or ABC's "now back to Superman" came in with the archive.org ad reels and
+  play on any channel. Find them (short, network logo, voice-over; or via viewer reports) and move
+  them out, or keep them for a matching channel.
