@@ -70,13 +70,16 @@
             osdTimer = setTimeout(() => { osd.classList.add("hidden"); controls.classList.add("hidden"); }, 3000);
         }
 
-        function retune() { clearTimeout(retry); retry = setTimeout(() => tune(current), 2000); }
+        // retries after a dropped or stuck stream wait longer each time (2, 4, 8, 16, then 30 s), since each
+        // builds a new player and a TV browser runs short of memory; a picture playing resets it
+        let fails = 0;
+        function retune() { clearTimeout(retry); retry = setTimeout(() => tune(current), Math.min(2000 * 2 ** fails++, 30000)); }
 
         function tune(index) {
             clearTimeout(retry);
             // the Samsung wakes its pointer when the stream changes (remote, typed number or a retry after a
             // dropped stream); if it was hidden, keep it hidden
-            if (document.body.classList.contains("idle")) hideSoon();
+            if (document.body.classList.contains("idle")) { hideSoon(); hiddenTuneAt = Date.now(); }
             current = (index + channels.length) % channels.length;
             const ch = channels[current];
             showOsd(ch.channel, ch.display);
@@ -84,11 +87,18 @@
             history.replaceState(null, "", "#" + ch.channel);
             lastMoved = Date.now();
             snow.classList.remove("hidden");
-            if (player) { player.destroy(); player = null; }
+            if (player) {
+                player.destroy();
+                player = null;
+                video.removeAttribute("src");
+                video.load(); // lets the browser free the old stream's decoder and buffers now, not later
+            }
             if (raw) {
                 video.disableRemotePlayback = true; // iOS's ManagedMediaSource wants this
+                // autoCleanup drops video already played (the default keeps all of it, hours on a TV left on)
                 player = mpegts.createPlayer({ type: "mpegts", isLive: true, url: `/live/stream/${ch.channel}.ts?surf=1` },
-                    { enableStashBuffer: false, liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 3 });
+                    { enableStashBuffer: false, liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 3,
+                      autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 30, autoCleanupMinBackwardDuration: 10 });
                 player.attachMediaElement(video);
                 player.load();
                 player.on(mpegts.Events.ERROR, retune);
@@ -126,6 +136,7 @@
         video.addEventListener("error", () => !raw && retune());
         video.addEventListener("playing", () => {
             snow.classList.add("hidden");
+            fails = 0;
             if (document.body.classList.contains("idle")) hideSoon();  // the new picture can wake the Samsung's pointer too
         });
 
@@ -144,7 +155,7 @@
         setInterval(() => {
             if (!channels.length || video.paused) return;
             if (video.currentTime !== lastTime) { lastTime = video.currentTime; lastMoved = Date.now(); }
-            else if (Date.now() - lastMoved > STALL) tune(current);
+            else if (Date.now() - lastMoved > STALL) { lastMoved = Date.now() + 30000; retune(); } // (no re-check while it waits)
         }, 1000);
 
         function tuneNumber(n) {
@@ -189,7 +200,7 @@
             } else return;
             e.preventDefault(); // so a TV browser doesn't also scroll or move its focus
         });
-        let idleTimer, keyAt = 0;
+        let idleTimer, keyAt = 0, hiddenTuneAt = 0;
         function idle() { clearTimeout(idleTimer); idleTimer = setTimeout(() => document.body.classList.add("idle"), 3000); }
         // a remote button on a Samsung wakes its pointer with a mouse move; hide it again, it isn't wanted
         // ...and it only looks at the page's "no pointer" rule when the rule changes, so switch between two hidden kinds
@@ -207,6 +218,9 @@
         document.addEventListener("keydown", hideSoon);
         document.addEventListener("mousemove", () => {
             if (Date.now() - keyAt < 1500) return;
+            // the new stream can wake it well after the key (a typed number tunes 1.2 s later, then the
+            // stream takes a moment), so while a channel tuned with the pointer hidden is still starting, it stays hidden
+            if (Date.now() - hiddenTuneAt < 10000 && !snow.classList.contains("hidden")) return;
             document.body.classList.remove("idle");
             controls.classList.remove("hidden");  // the pointer is out, so it may want the buttons
             clearTimeout(osdTimer);
