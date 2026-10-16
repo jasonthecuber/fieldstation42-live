@@ -74,6 +74,9 @@
 
         function tune(index) {
             clearTimeout(retry);
+            // the Samsung wakes its pointer when the stream changes (remote, typed number or a retry after a
+            // dropped stream); if it was hidden, keep it hidden
+            if (document.body.classList.contains("idle")) hideSoon();
             current = (index + channels.length) % channels.length;
             const ch = channels[current];
             showOsd(ch.channel, ch.display);
@@ -177,7 +180,7 @@
                 typed += k;
                 showOsd(typed + "-");
                 clearTimeout(typedTimer);
-                typedTimer = setTimeout(() => { tuneNumber(Number(typed)); typed = ""; hideSoon(); }, 1200);
+                typedTimer = setTimeout(() => { tuneNumber(Number(typed)); typed = ""; }, 1200);
             } else if (k === "f" || (k === "Enter" && !e.target.closest("button"))) {
                 toggleFull();
             } else return;
