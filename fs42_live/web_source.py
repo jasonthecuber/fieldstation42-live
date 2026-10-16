@@ -19,7 +19,8 @@ FIRST_DISPLAY = 100  # Xvfb display = this + channel number, so channels never s
 DISPLAY_WAIT = 5.0  # seconds to wait for Xvfb to come up
 CHUNK = 64 * 1024
 # music plays through a playlist this many entries long; ffmpeg can't loop a playlist (its seek back
-# to the start fails and the sound stops), so it's written out long enough to run for days
+# to the start fails and the sound stops), so it's written out long enough to run for days; when it
+# does run out, -shortest ends the stream and the player's retune starts a fresh one
 PLAYLIST_ENTRIES = 10000
 
 
@@ -106,7 +107,7 @@ class WebPageSource:
                 for track in tracks:
                     escaped = track.replace("'", "'\\''")
                     f.write(f"file '{escaped}'\n")
-        return ["-re", "-f", "concat", "-safe", "0", "-i", playlist], "1:a:0"
+        return ["-re", "-f", "concat", "-safe", "0", "-i", playlist, "-shortest"], "1:a:0"
 
     def _music_tracks(self):
         query = urllib.parse.parse_qs(urllib.parse.urlparse(self.url).query)
