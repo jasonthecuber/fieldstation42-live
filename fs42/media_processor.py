@@ -57,7 +57,7 @@ from fs42.catalog_entry import CatalogEntry
 
 class MediaProcessor:
     # Define media type extensions
-    VIDEO_FORMATS = ["mp4", "mpg", "mpeg", "avi", "mov", "mkv", "ts", "m4v", "webm", "wmv"]
+    VIDEO_FORMATS = ["mp4", "mpg", "mpeg", "avi", "mov", "mkv", "ts", "m4v", "webm", "wmv", "flv"]  # fs42_live: flv added (music videos)
     AUDIO_FORMATS = ["mp3", "m4a", "flac", "wav", "aac", "ogg", "opus", "wma"]
 
     # For backward compatibility, default to all formats
