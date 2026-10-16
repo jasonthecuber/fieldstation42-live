@@ -50,6 +50,8 @@ class bcolors:
 class ShowCatalog:
     prebump = "prebump"
     postbump = "postbump"
+    # fs42_live: a clip show won't repeat a clip until this many others have played (half the pool, if smaller)
+    RECENT_CLIPS = 10
 
     # Tracks content_dirs already scanned by FluidBuilder in this process run.
     # Prevents redundant directory walks when multiple stations share the same
@@ -554,7 +556,7 @@ class ShowCatalog:
         else:
             return None
 
-    def find_candidate(self, tag, seconds, when, exclusion_index=None, proposed_start=None, meta_hints=None):
+    def find_candidate(self, tag, seconds, when, exclusion_index=None, proposed_start=None, meta_hints=None, avoid_recent=False):
         """Find the best candidate for a given tag and duration.
 
         exclusion_index: optional dict of {realpath: [(start, end), ...]} built from
@@ -597,7 +599,14 @@ class ShowCatalog:
             if not len(matches):
                 err = f"Could not find candidate video for tag={tag} under {seconds} in len - maybe add some shorter content?"
                 raise (MatchingContentNotFound(err))
+            if avoid_recent:  # fs42_live: skip the clips played lately, if anything else fits
+                recent = self.__dict__.setdefault("_recent_clips", {}).setdefault(tag, [])
+                window = recent[-min(self.RECENT_CLIPS, len(candidates) // 2):] if len(candidates) > 1 else []
+                matches = [m for m in matches if m.path not in window] or matches
             result = self._lowest_count(matches)
+            if avoid_recent:
+                recent.append(result.path)
+                del recent[:-self.RECENT_CLIPS]
             # note, this has been migrated
             result.count += 1
             # CatalogAPI.set_play_count(self.config, result.path, result.count)
@@ -876,7 +885,7 @@ class ShowCatalog:
         while keep_going:
             try:
                 # if it is a small or negative number, this will throw an exception when a candidate isn't found
-                candidate = self.find_candidate(tag, duration - current_duration, when)
+                candidate = self.find_candidate(tag, duration - current_duration, when, avoid_recent=True)  # fs42_live
                 if not candidate:
                     if len(clips) == 0:
                         raise MatchingContentNotFound(f"No content found for tag '{tag}' with duration {duration - current_duration:.1f}s")
