@@ -129,14 +129,14 @@ class LiquidSchedule:
             try:
                 candidate = self.catalog.find_candidate(
                     tag_str, timings.HOUR * 23, current_mark,
-                    exclusion_index=exclusion_index, proposed_start=current_mark
+                    exclusion_index=exclusion_index, proposed_start=current_mark, avoid_recent=True  # fs42_live
                 )
             except MatchingContentNotFound:
                 if exclusion_index:
                     # Exclusion may have blocked everything - retry without it.
                     # If this also fails it is a genuine content shortage.
                     try:
-                        candidate = self.catalog.find_candidate(tag_str, timings.HOUR * 23, current_mark)
+                        candidate = self.catalog.find_candidate(tag_str, timings.HOUR * 23, current_mark, avoid_recent=True)  # fs42_live
                         self._l.warning(
                             f"[{self.conf['network_name']}] Sibling exclusion blocked all candidates "
                             f"for tag={tag_str} at {current_mark} - "

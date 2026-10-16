@@ -124,7 +124,10 @@
         }
 
         video.addEventListener("error", () => !raw && retune());
-        video.addEventListener("playing", () => snow.classList.add("hidden"));
+        video.addEventListener("playing", () => {
+            snow.classList.add("hidden");
+            if (document.body.classList.contains("idle")) hideSoon();  // the new picture can wake the Samsung's pointer too
+        });
 
         // static while a channel tunes in, like an old set
         const snow = document.getElementById("snow");
@@ -191,7 +194,16 @@
         // a remote button on a Samsung wakes its pointer with a mouse move; hide it again, it isn't wanted
         // ...and it only looks at the page's "no pointer" rule when the rule changes, so switch between two hidden kinds
         function rehide() { document.body.classList.add("idle"); document.body.classList.toggle("alt"); }
-        function hideSoon() { keyAt = Date.now(); rehide(); setTimeout(rehide, 100); setTimeout(rehide, 1000); }
+        // one flip per burst: two flips at once cancel out, so the TV sees no change. A key press and the
+        // retune it causes both land here; each press restarts the follow-ups instead of adding more.
+        let hideTimers = [], lastHide = 0;
+        function hideSoon() {
+            keyAt = Date.now();
+            hideTimers.forEach(clearTimeout);
+            if (keyAt - lastHide > 50) rehide();
+            lastHide = keyAt;
+            hideTimers = [100, 1000].map(ms => setTimeout(rehide, ms));
+        }
         document.addEventListener("keydown", hideSoon);
         document.addEventListener("mousemove", () => {
             if (Date.now() - keyAt < 1500) return;

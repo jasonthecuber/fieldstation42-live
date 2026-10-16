@@ -50,7 +50,8 @@ class bcolors:
 class ShowCatalog:
     prebump = "prebump"
     postbump = "postbump"
-    # fs42_live: a clip show won't repeat a clip until this many others have played (half the pool, if smaller)
+    # fs42_live: a clip show or a shuffled channel (e.g. movies) won't repeat a pick until this many
+    # others have played (half the pool, if smaller)
     RECENT_CLIPS = 10
 
     # Tracks content_dirs already scanned by FluidBuilder in this process run.
