@@ -7,7 +7,7 @@ from asyncio.subprocess import DEVNULL, PIPE
 from dataclasses import dataclass
 
 from fs42.liquid_manager import LiquidManager
-from fs42_live import captions, hwaccel
+from fs42_live import captions, hwaccel, loudness
 from fs42_live.profile import RETRO
 from fs42_live.schedule_keeper import refresh_soon
 
@@ -189,7 +189,7 @@ class ScheduledSource:
             "-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo",
             "-map", "0:v:0", "-map", "0:a:0" if has_audio else "1:a",
             "-t", f"{seg.duration:.3f}", "-shortest",
-            "-vf", p.video_filter(hw, overlay), "-af", "aresample=async=1",
+            "-vf", p.video_filter(hw, overlay), "-af", loudness.audio_filter(seg.path),
             *p.encode_args(hw),
             "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
         )

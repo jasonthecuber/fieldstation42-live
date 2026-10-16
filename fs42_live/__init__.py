@@ -9,6 +9,7 @@ def install(app):
     from fs42_live.router import router
     from fs42_live.schedule_keeper import keep_breaks_found, keep_schedules_built
     from fs42_live.guide import fill_in_retro_guide
+    from fs42_live.loudness import keep_measured
 
     from fastapi.responses import RedirectResponse
 
@@ -23,11 +24,13 @@ def install(app):
     async def lifespan(a):
         keeper = asyncio.create_task(keep_schedules_built())
         breaks = asyncio.create_task(keep_breaks_found())
+        levels = asyncio.create_task(keep_measured())
         try:
             async with upstream_lifespan(a) as state:
                 yield state
         finally:
             keeper.cancel()
             breaks.cancel()
+            levels.cancel()
 
     app.router.lifespan_context = lifespan
