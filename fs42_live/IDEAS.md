@@ -46,6 +46,11 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     the server saves it with the channel, the time and the file playing at that moment (from the
     schedule, with the position in it), so it can be found and fixed later. Reports show on the
     live page, and Claude can read them from the server. A description is required.
+    - Stamp the moment the menu opened, not when the form is sent, and save everything that
+      played in the half minute before it (the problem may be a few seconds back).
+    - Quick picks, since typing on a TV is painful: number keys on the remote (the Samsung
+      passes digits, not letters), e.g. 1 wrong bumper, 2 static or frozen, 3 sound, 4 wrong
+      show or listing, 5 other. A pick counts as the description; typing more is optional.
   - Test on the Onn with a TV browser (TV Bro): d-pad up/down surfs, OK goes full screen.
   - **Theater room**: the Onn stick with a browser now; later a small Android TV app that
     wraps `/live/watch` in a full-screen WebView (no browser bars, starts from the home
