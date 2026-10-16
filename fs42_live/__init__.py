@@ -10,7 +10,11 @@ def install(app):
     from fs42_live.schedule_keeper import keep_breaks_found, keep_schedules_built
     from fs42_live.guide import fill_in_retro_guide
 
+    from fastapi.responses import RedirectResponse
+
     app.include_router(router)
+    # a short address to type on a TV remote: http://<server>:4242/tv
+    app.add_api_route("/tv", lambda: RedirectResponse("/live/watch"), include_in_schema=False)
     fill_in_retro_guide()
 
     upstream_lifespan = app.router.lifespan_context
