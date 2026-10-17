@@ -32,6 +32,23 @@
         body.idle.alt, body.idle.alt * { cursor: url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7) 0 0, none !important; }
         #controls button { width: 64px; height: 64px; border-radius: 50%; border: 2px solid #888;
                            background: rgba(0,0,0,.5); color: #fff; font-size: 28px; cursor: pointer; }
+        /* the menu, in the style of an old set's on-screen menu */
+        #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+                background: rgba(0,0,0,.45); font-size: clamp(16px, 3.2vh, 30px); }
+        #menu[hidden], #menu [hidden] { display: none; }
+        #menu .panel { background: #1c2a8c; border: 4px solid #ccc; padding: 1em 1.4em; min-width: min(80vw, 16em);
+                       max-width: 90vw; max-height: 86vh; overflow-y: auto; box-shadow: 8px 8px 0 #000; }
+        #menu h2 { margin: 0 0 .6em; font-size: 1.2em; color: #ff3; text-shadow: 2px 2px 0 #000; }
+        #menu button, #menu input { display: block; width: 100%; box-sizing: border-box; margin: .25em 0; padding: .35em .5em;
+                                    font: inherit; color: #fff; background: transparent; border: 2px solid transparent;
+                                    text-align: left; cursor: pointer; }
+        #menu button b { color: #ff3; margin-right: .6em; }
+        #menu button:focus, #menu input:focus { outline: none; border-color: #ff3; background: rgba(255,255,255,.12); }
+        #menu button.on { background: #3f3; color: #000; }
+        #menu button.on b { color: #000; }
+        #menu input { border-color: #888; background: rgba(0,0,0,.3); cursor: text; }
+        #menu .note, #menu .keys { font-size: .7em; color: #ccc; margin: .5em 0 0; }
+        #menu #reportMsg { color: #ff3; min-height: 1.2em; }
     </style>
 </head>
 <body>
@@ -39,12 +56,39 @@
     <canvas id="snow" width="160" height="120"></canvas>
     <div id="osd" class="hidden"></div>
     <div id="controls" class="hidden">
+        <button id="menuButton" aria-label="Menu">&#9776;</button>
         <button id="up" aria-label="Channel up">&#9650;</button>
         <button id="down" aria-label="Channel down">&#9660;</button>
         <button id="full" aria-label="Full screen">
             <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="M3 9V3h6M15 3h6v6M21 15v6h-6M9 21H3v-6"/></svg>
         </button>
+    </div>
+    <div id="menu" hidden>
+        <div class="panel" id="mainPanel">
+            <h2>Menu</h2>
+            <button data-key="1" data-go="channelPanel"><b>1</b>Channels</button>
+            <button data-key="2" data-go="reportPanel"><b>2</b>Report a problem</button>
+            <button data-key="0" data-close><b>0</b>Close</button>
+            <p class="keys">Back or Info closes the menu</p>
+        </div>
+        <div class="panel" id="channelPanel" hidden>
+            <h2>Channels</h2>
+            <div id="channelList"></div>
+            <p class="keys">Or type a channel number</p>
+        </div>
+        <div class="panel" id="reportPanel" hidden>
+            <h2>Report a problem</h2>
+            <button data-pick="1"><b>1</b>Wrong bumper or ad</button>
+            <button data-pick="2"><b>2</b>Static or frozen</button>
+            <button data-pick="3"><b>3</b>Sound problem</button>
+            <button data-pick="4"><b>4</b>Wrong show or listing</button>
+            <button data-pick="5"><b>5</b>Something else</button>
+            <input id="note" maxlength="1000" placeholder="Tell us more (optional)" autocomplete="off">
+            <button id="send"><b>&#10003;</b>Send</button>
+            <p id="reportMsg"></p>
+            <p class="note" id="reportWhen"></p>
+        </div>
     </div>
     <button id="start">&#9654; Tap to turn on</button>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.js"></script>
@@ -84,7 +128,7 @@
             const ch = channels[current];
             showOsd(ch.channel, ch.display);
             remember(ch.channel);
-            history.replaceState(null, "", "#" + ch.channel);
+            history.replaceState(history.state, "", "#" + ch.channel); // (keeps the menu's entry, if it's open)
             lastMoved = Date.now();
             snow.classList.remove("hidden");
             if (player) {
@@ -181,10 +225,10 @@
         const full = document.getElementById("full");
         full.hidden = !canFull;
         full.onclick = e => { e.stopPropagation(); toggleFull(); };
-        document.addEventListener("dblclick", e => { if (!e.target.closest("button")) toggleFull(); });
+        document.addEventListener("dblclick", e => { if (!e.target.closest("button, #menu")) toggleFull(); });
 
         document.addEventListener("keydown", e => {
-            if (!channels.length) return;
+            if (!channels.length || menuKeys(e)) return;
             const k = e.key;
             // TV remotes: the d-pad sends arrows; channel buttons, where a remote has them, send ChannelUp/Down.
             // Samsung's browser keeps those for its pointer, so blue (406) is up and yellow (405) is down.
@@ -231,6 +275,122 @@
         document.getElementById("up").onclick = e => { e.stopPropagation(); tune(current + 1); };
         document.getElementById("down").onclick = e => { e.stopPropagation(); tune(current - 1); };
         video.addEventListener("click", () => channels.length && showOsd(channels[current].channel, channels[current].display));
+
+        // the menu: Info on a TV remote (i or m on a keyboard), or the ☰ button. Arrows move, OK picks,
+        // a number picks its line, Back goes back. A report is stamped with the moment the menu opened.
+        const menu = document.getElementById("menu");
+        const panels = [...menu.querySelectorAll(".panel")];
+        const note = document.getElementById("note"), reportMsg = document.getElementById("reportMsg");
+        let openedAt = 0, openedChannel = 0, pick = 0;
+        const menuOpen = () => !menu.hidden;
+        const shown = () => panels.find(p => !p.hidden);
+        const focusable = () => [...shown().querySelectorAll("button, input")];
+
+        function openMenu() {
+            if (!channels.length) return;
+            openedAt = Date.now();
+            openedChannel = channels[current].channel;
+            menu.hidden = false;
+            controls.classList.add("hidden");
+            history.pushState({ menu: 1 }, "", location.hash); // so a browser's own Back closes the menu, not the page
+            showPanel("mainPanel");
+        }
+        function closeMenu() {
+            if (!menuOpen()) return;
+            menu.hidden = true;
+            document.activeElement?.blur();
+            if (history.state?.menu) history.back();
+        }
+        window.addEventListener("popstate", () => {
+            menu.hidden = true;
+            if (channels.length) history.replaceState(null, "", "#" + channels[current].channel); // a channel picked meanwhile
+        });
+        function showPanel(id) {
+            panels.forEach(p => p.hidden = p.id !== id);
+            if (id === "channelPanel") fillChannels();
+            if (id === "reportPanel") startReport();
+            const first = id === "channelPanel" ? shown().querySelector(`[data-ch="${channels[current].channel}"]`) : null;
+            (first || focusable()[0]).focus();
+        }
+        function fillChannels() {
+            document.getElementById("channelList").replaceChildren(...channels.map((c, i) => {
+                const b = document.createElement("button");
+                b.dataset.ch = c.channel;
+                b.innerHTML = `<b>${c.channel}</b>`;
+                b.append(c.display || c.name);
+                b.onclick = () => { closeMenu(); tune(i); };
+                return b;
+            }));
+        }
+        function startReport() {
+            pick = 0;
+            note.value = "";
+            reportMsg.textContent = "";
+            document.querySelectorAll("[data-pick]").forEach(b => b.classList.remove("on"));
+            const ch = channels.find(c => c.channel === openedChannel);
+            document.getElementById("reportWhen").textContent =
+                `Channel ${openedChannel} ${ch.display || ch.name}, the half minute before ${new Date(openedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
+        }
+        function choose(n) {
+            pick = n;
+            document.querySelectorAll("[data-pick]").forEach(b => b.classList.toggle("on", Number(b.dataset.pick) === n));
+            reportMsg.textContent = n === 5 ? "Say what's wrong, then Send" : "";
+            (n === 5 ? note : document.getElementById("send")).focus(); // typing is optional, so the TV keyboard only opens for "something else"
+        }
+        async function send() {
+            if (!pick && !note.value.trim()) { reportMsg.textContent = "Pick what's wrong first (1 to 5)"; return; }
+            if (pick === 5 && !note.value.trim()) { reportMsg.textContent = "Say what's wrong, then Send"; note.focus(); return; }
+            reportMsg.textContent = "Sending…";
+            try {
+                const r = await fetch("/live/report", { method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ channel: openedChannel, pick, note: note.value, ago: (Date.now() - openedAt) / 1000 }) });
+                if (!r.ok) throw new Error(r.status);
+                reportMsg.textContent = "Thanks! It's been sent.";
+                setTimeout(closeMenu, 1500);
+            } catch (e) {
+                reportMsg.textContent = "Couldn't send it; try again";
+            }
+        }
+        menu.addEventListener("click", e => {
+            const b = e.target.closest("button");
+            if (!b) { if (e.target === menu) closeMenu(); return; } // a tap outside the box closes it
+            if (b.dataset.go) showPanel(b.dataset.go);
+            else if ("close" in b.dataset) closeMenu();
+            else if (b.dataset.pick) choose(Number(b.dataset.pick));
+            else if (b.id === "send") send();
+        });
+        document.getElementById("menuButton").onclick = e => { e.stopPropagation(); openMenu(); };
+
+        // true if the menu took the key
+        function menuKeys(e) {
+            const k = e.key, typing = document.activeElement === note;
+            const info = e.keyCode === 457 || k === "Info" || k === "ContextMenu" || (!typing && (k === "i" || k === "m"));
+            if (!menuOpen()) {
+                if (!info) return false;
+                e.preventDefault();
+                openMenu();
+                return true;
+            }
+            const back = k === "Escape" || k === "GoBack" || k === "BrowserBack" || e.keyCode === 10009 || (!typing && k === "Backspace");
+            if (info || (back && shown().id === "mainPanel")) closeMenu();
+            else if (back) showPanel("mainPanel");
+            else if (k === "ArrowUp" || k === "ArrowDown") {
+                const items = focusable(), at = items.indexOf(document.activeElement);
+                const next = items[(at + (k === "ArrowUp" ? -1 : 1) + items.length) % items.length];
+                next.focus();
+                next.scrollIntoView({ block: "nearest" });
+            } else if (k === "Enter") {
+                if (typing) send(); else document.activeElement?.closest("#menu button")?.click();
+            } else if (/^[0-9]$/.test(k) && !typing) {
+                const panel = shown().id;
+                if (panel === "channelPanel") { closeMenu(); return false; } // typed channel numbers work as usual
+                const b = shown().querySelector(`[data-key="${k}"], [data-pick="${k}"]`);
+                if (b) b.click();
+            } else if (typing) return true; // letters, spaces and arrows for the note
+            else return true;
+            e.preventDefault();
+            return true;
+        }
 
         start.onclick = async () => {
             // phones and TVs (no mouse) go full screen when turned on; a PC stays in its window

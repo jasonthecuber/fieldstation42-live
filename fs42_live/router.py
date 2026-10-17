@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import guide, hls, hwaccel, settings
+from fs42_live import guide, hls, hwaccel, reports, settings
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -132,3 +132,23 @@ async def watch_page():
 @router.get("/watch.webmanifest")
 async def watch_manifest():
     return FileResponse(os.path.join(STATIC, "watch.webmanifest"), media_type="application/manifest+json")
+
+
+@router.post("/report")
+async def report_problem(request: Request):
+    """The web player's "Report a problem": the channel, a pick (1-5) and/or a note, and how many
+    seconds ago the viewer opened the menu."""
+    body = await request.json()
+    station = _station(int(body.get("channel", 0)))
+    pick, note = int(body.get("pick") or 0), str(body.get("note") or "")
+    if (pick not in reports.PICKS or pick == 5) and not note.strip():  # "something else" needs a note
+        raise HTTPException(status_code=400, detail="Say what's wrong")
+    saved = await asyncio.to_thread(reports.save, station, pick, note, float(body.get("ago") or 0),
+                                    request.headers.get("user-agent", ""))
+    _l.info(f"problem report: ch {saved['channel']} {saved['problem']} {saved['note']!r}")
+    return {"saved": True}
+
+
+@router.get("/reports")
+async def problem_reports():
+    return await asyncio.to_thread(reports.recent)
