@@ -142,9 +142,10 @@ def retro(station, path):
     return _keep(path, items[:last + 1])  # (the slot's filler after the show: a recording would stop with the show)
 
 
-def shuffle(station, breaks):
+def shuffle(station, breaks, order=None):
     """A music channel's videos in a random order, all of them once; with breaks, every few videos an ident
-    and an ad or two, as music TV ran them. None if it has no videos."""
+    and an ad or two, as music TV ran them. Given an earlier shuffle's order (its breaks switched on or off),
+    the same order. None if it has no videos."""
     entries = CatalogAPI.get_entries(station)
     videos = [e for e in entries if e.content_type == "feature" and e.media_type == "video" and e.duration]
     idents = [e for e in entries if e.content_type == "bump" and e.media_type == "video" and e.duration]
@@ -152,7 +153,11 @@ def shuffle(station, breaks):
            and e.duration <= MAX_AD]
     if not videos:
         return None
-    random.shuffle(videos)
+    if order:
+        by_path = {e.path: e for e in videos}
+        videos = [by_path[p] for p in order if p in by_path]
+    else:
+        random.shuffle(videos)
     item = lambda e: {"file": e.path, "skip": 0.0, "duration": e.duration, "type": e.content_type}
     items, until = [], random.randint(*VIDEOS_BETWEEN_BREAKS)
     for n, video in enumerate(videos, 1):
@@ -162,13 +167,13 @@ def shuffle(station, breaks):
             ident = [item(random.choice(idents))] if idents else []
             items += ident + [item(ad) for ad in random.sample(ads, min(len(ads), random.randint(1, 2)))] + ident
             until = random.randint(*VIDEOS_BETWEEN_BREAKS)
-    return _keep(f"shuffle:{station['channel_number']}", items)
+    return _keep(f"shuffle:{station['channel_number']}", items, breaks=bool(breaks))
 
 
-def _keep(file, items):
+def _keep(file, items, **more):
     """Keeps a plan, so the device can pick it up again later."""
     plan = {"id": uuid.uuid4().hex[:12], "file": file, "items": items,
-            "duration": sum(i["duration"] for i in items), "made": time.time()}
+            "duration": sum(i["duration"] for i in items), "made": time.time(), **more}
     with _plans_lock:
         plans = _load_plans()
         plans[plan["id"]] = plan

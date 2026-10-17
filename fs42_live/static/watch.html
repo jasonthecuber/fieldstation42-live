@@ -59,6 +59,7 @@
                                     text-align: left; cursor: pointer; }
         #menu button b { color: #ff3; margin-right: .6em; }
         #menu button small { float: right; margin-left: 1em; color: #ccc; }
+        #menu button.back { float: right; width: auto; margin: 0 0 0 1em; padding: .1em .6em; font-size: .8em; } /* (for a phone or PC: a TV remote has Back) */
         #menu button:focus, #menu input:focus { outline: none; border-color: #ff3; background: rgba(255,255,255,.12); }
         #menu button.on { background: #3f3; color: #000; }
         #menu button.on b { color: #000; }
@@ -90,21 +91,25 @@
             <button data-key="2" data-go="reportPanel"><b>2</b>Report a problem</button>
             <button data-key="3" id="odButton"><b>3</b>Watch this from the start</button>
             <button data-key="4" data-go="odPanel" id="odBrowse"><b>4</b>On demand</button>
+            <button data-key="5" id="breaksButton" hidden></button>
             <button data-key="0" data-close><b>0</b>Close</button>
             <p id="mainMsg" class="note"></p>
             <p class="keys">Back or Info closes the menu</p>
         </div>
         <div class="panel" id="channelPanel" hidden>
+            <button class="back">&lsaquo; Back</button>
             <h2>Channels</h2>
             <div id="channelList"></div>
             <p class="keys">Or type a channel number</p>
         </div>
         <div class="panel" id="odPanel" hidden>
+            <button class="back">&lsaquo; Back</button>
             <h2 id="odTitle">On demand</h2>
             <div id="odList"></div>
             <p class="keys">Back goes up a level</p>
         </div>
         <div class="panel" id="startPanel" hidden>
+            <button class="back">&lsaquo; Back</button>
             <h2 id="startTitle">From the start</h2>
             <button data-key="1" data-retro="on"><b>1</b>As it aired, with breaks</button>
             <button data-key="2" data-retro="off"><b>2</b>Just the show</button>
@@ -112,6 +117,7 @@
             <p class="keys">Back goes to the menu</p>
         </div>
         <div class="panel" id="reportPanel" hidden>
+            <button class="back">&lsaquo; Back</button>
             <h2>Report a problem</h2>
             <button data-pick="1"><b>1</b>Wrong bumper or ad</button>
             <button data-pick="2"><b>2</b>Static or frozen</button>
@@ -291,6 +297,10 @@
             }
             playOd();
         }
+        function toggleBreaks() {
+            try { localStorage.setItem("fs42-retro", retroOn() ? "off" : "on"); } catch (e) {}
+            if (od) startOd({ ...od, duration: od.length }, showTime(odPos()) + 5); // (a shuffle keeps its order)
+        }
         // a music channel's videos shuffled, with breaks every few videos in retro mode
         const shuffleOf = c => ({ channel: c.channel, file: `shuffle:${c.channel}`, mix: true,
                                   name: `${c.display || c.name}, shuffled`, title: `${c.display || c.name}, shuffled` });
@@ -320,23 +330,29 @@
             const last = od.items[od.items.length - 1];
             return { file: last.file, at: last.skip + last.duration, type: last.type };
         }
+        // the show's own time, without the breaks (a shuffle's: the videos' seconds so far, the same with breaks or without)
         function showTime(pos) { // a point in the stream -> the show's own time (in a break, where the show stopped)
-            if (!od.items || od.mix) return pos;
-            let at = 0, upTo = 0;
+            if (!od.items) return pos;
+            let at = 0, upTo = 0, videos = 0;
             for (const i of od.items) {
                 if (i.type === "feature") {
-                    if (pos < at + i.duration) return i.skip + pos - at;
-                    upTo = i.skip + i.duration;
+                    const from = od.mix ? videos : i.skip;
+                    if (pos < at + i.duration) return from + pos - at;
+                    upTo = from + i.duration;
+                    videos += i.duration;
                 } else if (pos < at + i.duration) return upTo;
                 at += i.duration;
             }
             return upTo;
         }
         function planTime(t) { // the show's own time -> the point in the stream
-            if (od.mix) return t;
-            let at = 0;
+            let at = 0, videos = 0;
             for (const i of od.items) {
-                if (i.type === "feature" && t < i.skip + i.duration) return at + Math.max(0, t - i.skip);
+                if (i.type === "feature") {
+                    const from = od.mix ? videos : i.skip;
+                    if (t < from + i.duration) return at + Math.max(0, t - from);
+                    videos += i.duration;
+                }
                 at += i.duration;
             }
             return at;
@@ -635,7 +651,7 @@
         const odButton = document.getElementById("odButton");
         const menuOpen = () => !menu.hidden;
         const shown = () => panels.find(p => !p.hidden);
-        const focusable = () => [...shown().querySelectorAll("button, input")];
+        const focusable = () => [...shown().querySelectorAll("button:not(.back), input")];
 
         function openMenu() {
             if (!channels.length) return;
@@ -644,6 +660,9 @@
             openedOd = od && { ...playing(odPos()), name: od.name, when: odPos() }; // (in a break, the commercial or bumper on)
             odButton.innerHTML = od ? "<b>3</b>Back to live TV" : "<b>3</b>Watch this from the start";
             odButton.hidden = document.getElementById("odBrowse").hidden = !raw; // (old iPhones play HLS, which has no on-demand stream yet)
+            const breaksButton = document.getElementById("breaksButton");
+            breaksButton.hidden = !od; // (watching on demand: switch the breaks on or off, carrying on from the same spot)
+            breaksButton.innerHTML = `<b>5</b>Commercial breaks<small>${retroOn() ? "On" : "Off"}</small>`;
             menu.hidden = false;
             controls.classList.add("hidden");
             history.pushState({ menu: 1 }, "", location.hash); // so a browser's own Back closes the menu, not the page
@@ -791,8 +810,15 @@
             else if (b.id === "send") send();
             else if (b.id === "odButton") { if (od) { closeMenu(); backToLive(); } else showPanel("startPanel"); }
             else if (b.dataset.retro) pickFromStart(b.dataset.retro);
+            else if (b.classList.contains("back")) menuBack();
+            else if (b.id === "breaksButton") toggleBreaks();
         });
         document.getElementById("menuButton").onclick = e => { e.stopPropagation(); openMenu(); };
+
+        function menuBack() { // (the remote's Back, or the Back button)
+            if (shown().id === "odPanel" && odLevel.length) goOd(odLevel.slice(0, -1), odLevel[odLevel.length - 1]);
+            else showPanel("mainPanel");
+        }
 
         // true if the menu took the key
         function menuKeys(e) {
@@ -806,8 +832,7 @@
             }
             const back = k === "Escape" || k === "GoBack" || k === "BrowserBack" || e.keyCode === 10009 || (!typing && k === "Backspace");
             if (info || (back && shown().id === "mainPanel")) closeMenu();
-            else if (back && shown().id === "odPanel" && odLevel.length) goOd(odLevel.slice(0, -1), odLevel[odLevel.length - 1]);
-            else if (back) showPanel("mainPanel");
+            else if (back) menuBack();
             else if (k === "ArrowUp" || k === "ArrowDown") {
                 const items = focusable(), at = items.indexOf(document.activeElement);
                 const next = items[(at + (k === "ArrowUp" ? -1 : 1) + items.length) % items.length];
