@@ -83,8 +83,10 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     A series rolls on into its next episode, breaks and all.
   - **Step 1 is in** (2026-10-17): menu 3, "Watch this from the start", plays the show on now from its
     start (`/live/ondemand/now/N`, `/live/ondemand/N.ts?file=&start=`). OK pauses, left/right (red/green on a Samsung) skip 30 s
-    (double-tap the sides on a phone), Back returns to live TV. Next: browse a channel's catalog,
-    roll on to the next episode, per-device resume; then retro mode.
+    (double-tap the sides on a phone), Back returns to live TV.
+  - **Step 2 is in** (2026-10-17): menu 4, "On demand": a Continue line (this device's last spot), then channels,
+    seasons (when there's more than one), episodes (`/live/ondemand/catalog`, `/live/ondemand/catalog/N`). Spots are
+    kept per device in localStorage (newest 30); at a show's end the next in the catalog starts. Next: retro mode.
 
 ## Content helpers
 
