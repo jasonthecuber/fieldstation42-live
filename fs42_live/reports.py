@@ -40,7 +40,8 @@ def what_played(network, until, seconds=LOOK_BACK):
     return played
 
 
-def save(station, pick, note, ago, agent):
+def save(station, pick, note, ago, agent, ondemand=None):
+    """`ondemand` is (file, seconds into it) when the viewer was watching on demand, not the channel."""
     seen = datetime.datetime.now() - datetime.timedelta(seconds=max(0.0, min(ago, 3600)))
     report = {
         "seen": seen.isoformat(timespec="seconds"),
@@ -49,7 +50,7 @@ def save(station, pick, note, ago, agent):
         "problem": PICKS.get(pick, ""),
         "note": note.strip()[:1000],
         "device": agent[:200],
-        "played": [] if station["network_type"] == "web" else what_played(station["network_name"], seen),
+        "played": played(station, seen, ondemand),
     }
     with _lock:
         with open(STORE, "a") as f:
@@ -66,3 +67,11 @@ def recent(count=50):
     except FileNotFoundError:
         return []
     return [json.loads(line) for line in reversed(lines) if line.strip()]
+
+
+def played(station, seen, ondemand):
+    if ondemand:
+        file, at = ondemand
+        return [{"file": file, "from": round(max(0.0, at - LOOK_BACK), 1), "to": round(at, 1),
+                 "at": seen.isoformat(timespec="seconds"), "ondemand": True}]
+    return [] if station["network_type"] == "web" else what_played(station["network_name"], seen)

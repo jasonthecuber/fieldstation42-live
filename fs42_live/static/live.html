@@ -135,7 +135,7 @@
             played.innerHTML = (r.played || []).map(p => p.error ? '<span class="muted">(no schedule)</span>'
                 : `<div></div>`).join('') || '<span class="muted">(web page)</span>';
             (r.played || []).filter(p => !p.error).forEach((p, i) => {
-                played.children[i].textContent = `${p.file.split('/').pop()} (${clock(p.from)}–${clock(p.to)})`;
+                played.children[i].textContent = `${p.file.split('/').pop()} (${clock(p.from)}–${clock(p.to)})${p.ondemand ? ' on demand' : ''}`;
             });
             return cell;
         }

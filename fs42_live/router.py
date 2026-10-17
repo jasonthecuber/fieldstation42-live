@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import guide, hls, hwaccel, reports, settings
+from fs42_live import guide, hls, hwaccel, ondemand, reports, settings
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -134,6 +134,29 @@ async def watch_manifest():
     return FileResponse(os.path.join(STATIC, "watch.webmanifest"), media_type="application/manifest+json")
 
 
+@router.get("/ondemand/now/{channel}")
+async def ondemand_now(channel: int):
+    """The show on a channel now, to watch from the start."""
+    station = _station(channel)
+    show = await asyncio.to_thread(ondemand.now_showing, station)
+    if show is None or ondemand.allowed(station, show["file"]) is None:
+        raise HTTPException(status_code=404, detail="Nothing to watch from the start on this channel")
+    show["duration"] = await ondemand.duration(show["file"])
+    return show
+
+
+@router.get("/ondemand/{channel}.ts")
+async def ondemand_stream(channel: int, file: str, start: float = 0):
+    station = _station(channel)
+    path = ondemand.allowed(station, file)
+    length = path and await ondemand.duration(path)
+    if not length:
+        raise HTTPException(status_code=404, detail="Not in this channel's catalog")
+    start = max(0.0, min(start, length - 1))
+    _l.info(f"{station['network_name']}: on demand {os.path.basename(path)} from {start:.0f}s")
+    return StreamingResponse(ondemand.OnDemandSource(station, path, start, length).stream(), media_type="video/mp2t")
+
+
 @router.post("/report")
 async def report_problem(request: Request):
     """The web player's "Report a problem": the channel, a pick (1-5) and/or a note, and how many
@@ -143,8 +166,10 @@ async def report_problem(request: Request):
     pick, note = int(body.get("pick") or 0), str(body.get("note") or "")
     if (pick not in reports.PICKS or pick == 5) and not note.strip():  # "something else" needs a note
         raise HTTPException(status_code=400, detail="Say what's wrong")
+    file = body.get("file")
+    watching = (file, float(body.get("at") or 0)) if file and ondemand.allowed(station, file) else None
     saved = await asyncio.to_thread(reports.save, station, pick, note, float(body.get("ago") or 0),
-                                    request.headers.get("user-agent", ""))
+                                    request.headers.get("user-agent", ""), watching)
     _l.info(f"problem report #{saved['number']}: ch {saved['channel']} {saved['problem']} {saved['note']!r}")
     return {"saved": True, "number": saved["number"]}
 
