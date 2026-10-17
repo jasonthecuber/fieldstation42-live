@@ -92,6 +92,9 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     Plans are kept server side (newest 100) so a resume gets the same breaks. Skip ahead in a break skips
     it; the progress line marks the breaks. "Commercial breaks: On/Off" in the On demand menu (default on).
     Music videos play plain (a lone video would be mostly breaks). Deferred: "start over" (probably not wanted).
+  - Music channels: "Shuffle them all" (every video once, random order; in retro mode an ident and an ad or two
+    every 3-4 videos; skip ahead goes to the next video). "Watch this from the start" asks: with breaks or just the show.
+  - Later: search the on-demand catalog (Jason, 2026-10-17).
 
 ## Content helpers
 
