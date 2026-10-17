@@ -39,6 +39,12 @@
                         <thead><tr><th>Ch</th><th>Name</th><th>Status</th><th>Viewers</th><th>Running</th><th>Schedule built to</th><th></th></tr></thead>
                         <tbody id="channels"><tr><td colspan="7">Loading…</td></tr></tbody>
                     </table>
+                    <h3>Problem reports</h3>
+                    <p>Sent from the player's menu (Info on a TV remote, or ☰), with what played in the half minute before.</p>
+                    <table class="pure-table pure-table-horizontal">
+                        <thead><tr><th>Seen</th><th>Ch</th><th>Problem</th><th>Playing then</th></tr></thead>
+                        <tbody id="reports"><tr><td colspan="4">Loading…</td></tr></tbody>
+                    </table>
                     <h3>Jellyfin setup</h3>
                     <dl>
                         <dt>M3U tuner</dt><dd><code>${base}/live/channels.m3u</code></dd>
@@ -100,6 +106,38 @@
             } catch (e) {
                 console.warn('live status failed', e);
             }
+            try {
+                const reports = await (await fetch('/live/reports')).json();
+                document.getElementById('reports').replaceChildren(...(reports.length ? reports.map(reportRow) : [emptyReports()]));
+            } catch (e) {
+                console.warn('reports failed', e);
+            }
+        }
+
+        function emptyReports() {
+            const cell = document.createElement('tr');
+            cell.innerHTML = '<td colspan="4" class="muted">None yet</td>';
+            return cell;
+        }
+
+        function clock(seconds) {
+            const s = Math.floor(seconds);
+            return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        }
+
+        function reportRow(r) {
+            const cell = document.createElement('tr');
+            cell.innerHTML = '<td></td><td></td><td></td><td></td>';
+            const [seen, ch, problem, played] = cell.children;
+            seen.textContent = new Date(r.seen).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
+            ch.textContent = `${r.channel} ${r.network}`;
+            problem.textContent = [r.problem, r.note].filter(Boolean).join(': ');
+            played.innerHTML = (r.played || []).map(p => p.error ? '<span class="muted">(no schedule)</span>'
+                : `<div></div>`).join('') || '<span class="muted">(web page)</span>';
+            (r.played || []).filter(p => !p.error).forEach((p, i) => {
+                played.children[i].textContent = `${p.file.split('/').pop()} (${clock(p.from)}–${clock(p.to)})`;
+            });
+            return cell;
         }
 
         async function restart(channel) {

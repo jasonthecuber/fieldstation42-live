@@ -42,6 +42,9 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     can't be found by anyone who doesn't already know them, so they'd suit the hidden modes,
     e.g. a remote code like up-up-down-down (Konami style) on a TV. Moving full screen off OK
     once OK opens the menu.
+  - **First menu is in** (2026-10-17): Info key (keyCode 457; i/m on a keyboard) or ☰ opens it;
+    Channels and Report a problem. Reports go to `runtime/reports.jsonl`, `GET /live/reports`
+    and the live page. Still to come: on-demand, guide, settings; OK still toggles full screen.
   - **"Report a problem" in the menu** (Jason, 2026-10-16). A viewer (Noel, family) writes what's wrong;
     the server saves it with the channel, the time and the file playing at that moment (from the
     schedule, with the position in it), so it can be found and fixed later. Reports show on the
