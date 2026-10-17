@@ -319,8 +319,8 @@
             const k = e.key, c = e.keyCode;
             if ((k === "Enter" && !e.target.closest?.("button")) || k === " " || k === "MediaPlayPause" || c === 10252
                 || ((k === "MediaPlay" || c === 415) && video.paused) || ((k === "MediaPause" || c === 19) && !video.paused)) togglePause();
-            else if (k === "ArrowLeft" || k === "MediaRewind" || c === 412) seekOd(-30);
-            else if (k === "ArrowRight" || k === "MediaFastForward" || c === 417) seekOd(30);
+            else if (k === "ArrowLeft" || k === "MediaRewind" || c === 412 || c === 403) seekOd(-30); // (a Samsung keeps the arrows for its pointer: red)
+            else if (k === "ArrowRight" || k === "MediaFastForward" || c === 417 || c === 404) seekOd(30); // (...and green)
             else if (k === "Escape" || k === "GoBack" || k === "BrowserBack" || c === 10009 || k === "Backspace" || k === "MediaStop" || c === 413) backToLive();
             else return false;
             return true;

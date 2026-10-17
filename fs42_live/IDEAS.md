@@ -82,7 +82,7 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     users, metadata), so link out to it. If anything, a per-device "resume" for retro mode.
     A series rolls on into its next episode, breaks and all.
   - **Step 1 is in** (2026-10-17): menu 3, "Watch this from the start", plays the show on now from its
-    start (`/live/ondemand/now/N`, `/live/ondemand/N.ts?file=&start=`). OK pauses, left/right skip 30 s
+    start (`/live/ondemand/now/N`, `/live/ondemand/N.ts?file=&start=`). OK pauses, left/right (red/green on a Samsung) skip 30 s
     (double-tap the sides on a phone), Back returns to live TV. Next: browse a channel's catalog,
     roll on to the next episode, per-device resume; then retro mode.
 
