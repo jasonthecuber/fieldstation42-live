@@ -386,7 +386,7 @@
             showProgress();
         }
         function showProgress() {
-            progress.querySelector("div div").style.width = `${Math.min(100, 100 * odPos() / od.duration)}%`;
+            progress.querySelector(":scope > div > div").style.width = `${Math.min(100, 100 * odPos() / od.duration)}%`;
             document.getElementById("progressTime").textContent = `${clock(odPos())} / ${clock(od.duration)}`;
         }
         function seekOd(by) {
