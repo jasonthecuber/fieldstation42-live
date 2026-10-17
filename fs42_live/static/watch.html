@@ -579,11 +579,11 @@
             list.replaceChildren();
             title.textContent = "On demand";
             const lines = [];
-            const line = (id, html, right, pick) => {
+            const line = (id, html, right, pick, mark) => { // (mark: an episode number, else the line's own 1 to 9)
                 const b = document.createElement("button");
                 b.dataset.id = id;
-                if (lines.length < 9) b.dataset.key = lines.length + 1;
-                b.innerHTML = `<b>${lines.length < 9 ? lines.length + 1 : "&nbsp;&nbsp;"}</b>${html}<small>${right}</small>`;
+                if (mark === undefined && lines.length < 9) b.dataset.key = lines.length + 1;
+                b.innerHTML = `<b>${mark ?? (lines.length < 9 ? lines.length + 1 : "&nbsp;&nbsp;")}</b>${html}<small>${right}</small>`;
                 b.onclick = pick;
                 lines.push(b);
             };
@@ -591,9 +591,9 @@
             try {
                 if (ch === undefined) {
                     const spot = lastSpot();
-                    if (spot) line("continue", `Continue ${esc(spot.label || spot.name)}`, clock(spot.at), () => startOd(spot, spot.at));
+                    if (spot) line("continue", `Continue ${esc(spot.name)}`, clock(spot.at), () => startOd(spot, spot.at));
                     for (const c of await (await fetch("/live/ondemand/catalog")).json())
-                        line(c.channel, `${c.channel} ${esc(c.display || c.name)}`, c.count, () => goOd([c.channel]));
+                        line(c.channel, esc(c.display || c.name), c.count, () => goOd([c.channel]));
                 } else {
                     const items = await odItems(ch), groups = [...new Set(items.map(i => i.group))];
                     const c = channels.find(c => c.channel === ch), name = c ? c.display || c.name : ch;
@@ -607,7 +607,7 @@
                         title.textContent = groups.length > 1 ? `${name}: ${g || "Other"}` : name;
                         eps.forEach(i => {
                             const at = saved[i.file]?.at;
-                            line(i.file, esc(i.label), at ? `&#9654; ${clock(at)}` : clock(i.duration), () => startOd({ ...i, channel: ch }, at || 0));
+                            line(i.file, esc(i.label), at ? `&#9654; ${clock(at)}` : clock(i.duration), () => startOd({ ...i, channel: ch }, at || 0), i.episode ?? undefined); // (movies get 1 to 9)
                         });
                         // else start on the one last watched here
                         from = from ?? eps.filter(i => saved[i.file]).sort((a, b) => saved[b.file].when - saved[a.file].when)[0]?.file;

@@ -63,7 +63,8 @@ def catalog(station):
         if e.duration:
             _durations[e.path] = e.duration  # (so its stream needn't ask ffprobe)
         items.append({"file": e.path, "name": name, "title": name, "group": group,
-                      "label": f"{ep[1]}. {ep[2]}" if ep and ep[2] else name, "duration": e.duration})
+                      "label": ep[2] if ep and ep[2] else name, "episode": ep[1] if ep else None,
+                      "duration": e.duration})
     return sorted(items, key=lambda i: _natural(i["file"]))
 
 
