@@ -56,6 +56,7 @@
                                     font: inherit; color: #fff; background: transparent; border: 2px solid transparent;
                                     text-align: left; cursor: pointer; }
         #menu button b { color: #ff3; margin-right: .6em; }
+        #menu button small { float: right; margin-left: 1em; color: #ccc; }
         #menu button:focus, #menu input:focus { outline: none; border-color: #ff3; background: rgba(255,255,255,.12); }
         #menu button.on { background: #3f3; color: #000; }
         #menu button.on b { color: #000; }
@@ -86,6 +87,7 @@
             <button data-key="1" data-go="channelPanel"><b>1</b>Channels</button>
             <button data-key="2" data-go="reportPanel"><b>2</b>Report a problem</button>
             <button data-key="3" id="odButton"><b>3</b>Watch this from the start</button>
+            <button data-key="4" data-go="odPanel" id="odBrowse"><b>4</b>On demand</button>
             <button data-key="0" data-close><b>0</b>Close</button>
             <p id="mainMsg" class="note"></p>
             <p class="keys">Back or Info closes the menu</p>
@@ -94,6 +96,11 @@
             <h2>Channels</h2>
             <div id="channelList"></div>
             <p class="keys">Or type a channel number</p>
+        </div>
+        <div class="panel" id="odPanel" hidden>
+            <h2 id="odTitle">On demand</h2>
+            <div id="odList"></div>
+            <p class="keys">Back goes up a level</p>
         </div>
         <div class="panel" id="reportPanel" hidden>
             <h2>Report a problem</h2>
@@ -138,7 +145,7 @@
         function retune() {
             clearTimeout(retry);
             if (od) { // on demand: start again from where it got to (unless that's the end)
-                if (od.duration - odPos() < 10) return backToLive();
+                if (od.duration - odPos() < 10) return finishOd();
                 od.at = odPos();
                 odZero = null;
                 retry = setTimeout(playOd, Math.min(2000 * 2 ** fails++, 30000));
@@ -216,7 +223,7 @@
 
         // on demand: the show on a channel from its start (from the menu). od.at is where the stream began, in
         // seconds into the file; skipping starts a new stream from the new point, and so does playing after a long pause
-        let od = null, odZero = null, pausedTimer;
+        let od = null, odZero = null, pausedTimer, lastSaved = 0;
         const pauseButton = document.getElementById("pause"), progress = document.getElementById("progress");
         const still = document.getElementById("still");
         const odPos = () => od.at + (odZero === null ? 0 : Math.max(0, video.currentTime - odZero));
@@ -234,13 +241,41 @@
                 const r = await fetch(`/live/ondemand/now/${channels[current].channel}`);
                 if (!r.ok) throw new Error(r.status);
                 const show = await r.json();
-                closeMenu();
-                od = { ...show, at: 0 };
-                playOd();
+                startOd(show, 0);
             } catch (e) {
                 msg.textContent = "Nothing to watch from the start on this channel";
             }
         }
+        function startOd(item, at) {
+            closeMenu();
+            endOd(); // (keeps the spot in whatever was on)
+            od = { ...item, at: Math.max(0, at - 5) }; // a few seconds back, to pick up the thread
+            odItems(od.channel).catch(() => {}); // ready for the next episode
+            playOd();
+        }
+        // the end of a show (its stream just stops): the next one in the channel's catalog, else back to live TV
+        function finishOd() {
+            const done = od, items = odCatalogs[done.channel] || [];
+            logEvent("on demand finished", done.name);
+            endOd(); // (it was watched to the end, so its spot goes)
+            const next = items[items.findIndex(i => i.file === done.file) + 1];
+            if (next && items.some(i => i.file === done.file)) startOd({ ...next, channel: done.channel }, spots()[next.file]?.at || 0);
+            else tune(current);
+        }
+
+        // where this device left off in each show watched on demand (the newest 30), to pick up from there
+        function spots() { try { return JSON.parse(localStorage.getItem("fs42-spots")) || {}; } catch (e) { return {}; } }
+        function saveSpot() {
+            if (!od) return;
+            const all = spots(), at = odPos();
+            delete all[od.file];
+            if (at > 30 && od.duration - at > 60) // (not just started, and not finished)
+                all[od.file] = { channel: od.channel, file: od.file, name: od.name, title: od.title, group: od.group,
+                                 label: od.label, duration: od.duration, at, when: Date.now() };
+            const keep = Object.values(all).sort((a, b) => b.when - a.when).slice(0, 30);
+            try { localStorage.setItem("fs42-spots", JSON.stringify(Object.fromEntries(keep.map(s => [s.file, s])))); } catch (e) {}
+        }
+        const lastSpot = () => Object.values(spots()).sort((a, b) => b.when - a.when)[0];
         function playOd() {
             clearTimeout(retry);
             clearTimeout(pausedTimer);
@@ -268,6 +303,7 @@
         }
         function endOd() {
             if (!od) return;
+            saveSpot();
             od = null;
             clearTimeout(pausedTimer);
             document.body.classList.remove("paused");
@@ -307,6 +343,7 @@
                     odZero = null;
                     od.stopped = true;
                     stopPlayer();
+                    saveSpot();
                 }, 20000);
             }
             pauseButton.innerHTML = video.paused ? "&#9654;" : "&#10074;&#10074;";
@@ -379,12 +416,10 @@
             if (!channels.length || video.paused) return;
             if (od) {
                 showProgress();
-                // the end of the show (its stream just stops): back to live TV
+                if (odZero !== null && Date.now() - lastSaved > 10000) { saveSpot(); lastSaved = Date.now(); }
                 const left = od.duration - odPos();
-                if (odZero !== null && (left < 1.5 || (left < 10 && video.currentTime === lastTime && Date.now() - lastMoved > 3000))) {
-                    logEvent("on demand finished");
-                    return backToLive();
-                }
+                if (odZero !== null && (left < 1.5 || (left < 10 && video.currentTime === lastTime && Date.now() - lastMoved > 3000)))
+                    return finishOd();
             }
             if (video.currentTime !== lastTime) { lastTime = video.currentTime; lastMoved = Date.now(); }
             else if (Date.now() - lastMoved > STALL) { // (no re-check while it waits)
@@ -497,10 +532,10 @@
         function openMenu() {
             if (!channels.length) return;
             openedAt = Date.now();
-            openedChannel = channels[current].channel;
+            openedChannel = od ? od.channel : channels[current].channel;
             openedOd = od && { file: od.file, name: od.name, at: odPos() };
             odButton.innerHTML = od ? "<b>3</b>Back to live TV" : "<b>3</b>Watch this from the start";
-            odButton.hidden = !raw; // (old iPhones play HLS, which has no on-demand stream yet)
+            odButton.hidden = document.getElementById("odBrowse").hidden = !raw; // (old iPhones play HLS, which has no on-demand stream yet)
             menu.hidden = false;
             controls.classList.add("hidden");
             history.pushState({ menu: 1 }, "", location.hash); // so a browser's own Back closes the menu, not the page
@@ -521,8 +556,72 @@
             if (id === "channelPanel") fillChannels();
             if (id === "reportPanel") startReport();
             document.getElementById("mainMsg").textContent = "";
+            if (id === "odPanel") return od ? goOd([od.channel, ...(od.group !== undefined ? [od.group] : [])], od.file) : goOd([]);
             const first = id === "channelPanel" ? shown().querySelector(`[data-ch="${channels[current].channel}"]`) : null;
             (first || focusable()[0]).focus();
+        }
+
+        // on demand, browsing: the channels with something to watch (and what this device was last watching),
+        // then a channel's seasons (if it has more than one), then the episodes. 1 to 9 pick a line.
+        const odCatalogs = {}; // channel -> its items, in order, fetched once
+        let odLevel = [];      // [] the channels, [ch] a channel, [ch, group] a season
+        async function odItems(ch) {
+            if (!odCatalogs[ch]) {
+                const r = await fetch(`/live/ondemand/catalog/${ch}`);
+                if (!r.ok) throw new Error(r.status);
+                odCatalogs[ch] = (await r.json()).items;
+            }
+            return odCatalogs[ch];
+        }
+        async function goOd(level, from) { // (from: the line to start on)
+            odLevel = level;
+            const list = document.getElementById("odList"), title = document.getElementById("odTitle");
+            list.replaceChildren();
+            title.textContent = "On demand";
+            const lines = [];
+            const line = (id, html, right, pick) => {
+                const b = document.createElement("button");
+                b.dataset.id = id;
+                if (lines.length < 9) b.dataset.key = lines.length + 1;
+                b.innerHTML = `<b>${lines.length < 9 ? lines.length + 1 : "&nbsp;&nbsp;"}</b>${html}<small>${right}</small>`;
+                b.onclick = pick;
+                lines.push(b);
+            };
+            const [ch, group] = level;
+            try {
+                if (ch === undefined) {
+                    const spot = lastSpot();
+                    if (spot) line("continue", `Continue ${esc(spot.label || spot.name)}`, clock(spot.at), () => startOd(spot, spot.at));
+                    for (const c of await (await fetch("/live/ondemand/catalog")).json())
+                        line(c.channel, `${c.channel} ${esc(c.display || c.name)}`, c.count, () => goOd([c.channel]));
+                } else {
+                    const items = await odItems(ch), groups = [...new Set(items.map(i => i.group))];
+                    const c = channels.find(c => c.channel === ch), name = c ? c.display || c.name : ch;
+                    if (groups.length < 2) level = odLevel = [ch]; // (no seasons: one Back goes up)
+                    if (group === undefined && groups.length > 1) {
+                        title.textContent = name;
+                        from = items.find(i => i.file === from)?.group ?? from; // (the season of the show that's on)
+                        groups.forEach(g => line(g, esc(g || "Other"), items.filter(i => i.group === g).length, () => goOd([ch, g])));
+                    } else {
+                        const g = group ?? groups[0], saved = spots(), eps = items.filter(i => i.group === g);
+                        title.textContent = groups.length > 1 ? `${name}: ${g || "Other"}` : name;
+                        eps.forEach(i => {
+                            const at = saved[i.file]?.at;
+                            line(i.file, esc(i.label), at ? `&#9654; ${clock(at)}` : clock(i.duration), () => startOd({ ...i, channel: ch }, at || 0));
+                        });
+                        // else start on the one last watched here
+                        from = from ?? eps.filter(i => saved[i.file]).sort((a, b) => saved[b.file].when - saved[a.file].when)[0]?.file;
+                    }
+                }
+            } catch (e) {
+                list.textContent = "Couldn't load it; try again";
+                return;
+            }
+            if (odLevel !== level || !menuOpen() || shown().id !== "odPanel") return; // (moved on while it loaded)
+            list.replaceChildren(...lines);
+            const first = lines.find(b => b.dataset.id === String(from)) || lines[0];
+            first?.focus();
+            first?.scrollIntoView({ block: "nearest" });
         }
         function fillChannels() {
             document.getElementById("channelList").replaceChildren(...channels.map((c, i) => {
@@ -590,6 +689,7 @@
             }
             const back = k === "Escape" || k === "GoBack" || k === "BrowserBack" || e.keyCode === 10009 || (!typing && k === "Backspace");
             if (info || (back && shown().id === "mainPanel")) closeMenu();
+            else if (back && shown().id === "odPanel" && odLevel.length) goOd(odLevel.slice(0, -1), odLevel[odLevel.length - 1]);
             else if (back) showPanel("mainPanel");
             else if (k === "ArrowUp" || k === "ArrowDown") {
                 const items = focusable(), at = items.indexOf(document.activeElement);

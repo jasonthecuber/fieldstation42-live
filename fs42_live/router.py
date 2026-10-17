@@ -145,6 +145,18 @@ async def ondemand_now(channel: int):
     return show
 
 
+@router.get("/ondemand/catalog")
+async def ondemand_catalogs():
+    return await asyncio.to_thread(ondemand.catalogs)
+
+
+@router.get("/ondemand/catalog/{channel}")
+async def ondemand_catalog(channel: int):
+    """Everything on a channel to watch on demand, in order (so the next episode is the next one)."""
+    station = _station(channel)
+    return {"channel": channel, "items": await asyncio.to_thread(ondemand.catalog, station)}
+
+
 @router.get("/ondemand/{channel}.ts")
 async def ondemand_stream(channel: int, file: str, start: float = 0):
     station = _station(channel)

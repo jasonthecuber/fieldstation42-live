@@ -8,9 +8,12 @@ starts a new one from the new point.
 import asyncio
 import datetime
 import os
+import re
 from asyncio.subprocess import DEVNULL, PIPE
 
+from fs42.catalog_api import CatalogAPI
 from fs42.liquid_manager import LiquidManager
+from fs42_live import guide
 from fs42_live.scheduled_source import NUDGE, ScheduledSource, Segment
 
 _durations = {}
@@ -35,6 +38,44 @@ def now_showing(station):
     name = os.path.splitext(os.path.basename(entry.path))[0]
     return {"channel": station["channel_number"], "file": entry.path, "name": name,
             "title": station.get("live_titles", {}).get(pp.block_title, pp.block_title) or name}
+
+
+def _natural(text):
+    """Sorts "Season 2" before "Season 10", and E9 before E10."""
+    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", text.lower())]
+
+
+def catalog(station):
+    """A channel's shows and movies in order, each with the folder it's in under its show (a
+    season, say) as its group, and a label to list it by within that group."""
+    if station["network_type"] == "web" or not station.get("content_dir"):
+        return []
+    items = []
+    for e in CatalogAPI.get_entries(station):
+        if e.content_type != "feature" or e.media_type != "video":
+            continue
+        parts = os.path.relpath(e.path, station["content_dir"]).split(os.sep)
+        group = "/".join(parts[1:-1])
+        name = os.path.splitext(parts[-1])[0]
+        ep = guide.episode(name)
+        if ep and not group:
+            group = f"Season {ep[0]}"
+        if e.duration:
+            _durations[e.path] = e.duration  # (so its stream needn't ask ffprobe)
+        items.append({"file": e.path, "name": name, "title": name, "group": group,
+                      "label": f"{ep[1]}. {ep[2]}" if ep and ep[2] else name, "duration": e.duration})
+    return sorted(items, key=lambda i: _natural(i["file"]))
+
+
+def catalogs():
+    """The channels with something to watch on demand, and how much."""
+    out = []
+    for s in guide.streamable_stations():
+        count = len(catalog(s))
+        if count:
+            out.append({"channel": s["channel_number"], "name": s["network_name"],
+                        "display": guide.display_name(s), "count": count})
+    return out
 
 
 def allowed(station, path):
