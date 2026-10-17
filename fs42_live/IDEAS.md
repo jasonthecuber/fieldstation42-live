@@ -79,13 +79,6 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     users, metadata), so link out to it. If anything, a per-device "resume" for retro mode.
     A series rolls on into its next episode, breaks and all.
 
-## Server landing page
-
-- **Replace the stock Homepage (gethomepage.dev) placeholders** with real links: Jellyfin,
-  the FS42 console, live page and watch player, filebrowser, qBittorrent. Homepage also has
-  widgets for Jellyfin (now playing) and qBittorrent (speeds). It's Jason's container: Claude
-  drafts `services.yaml`, Jason installs it.
-
 ## Content helpers
 
 - **Wishlist → archive.org fetcher**: a file of wanted items (commercial reels, bumpers,
@@ -94,11 +87,9 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
 - **Disc ripping station** (Jason, 2026-10-16; flea-market DVDs and Blu-rays). Automatic Ripping
   Machine (ARM, Docker) on the Beelink with a USB drive: insert a disc, it identifies, rips
   (MakeMKV), optionally transcodes (HandBrake, Quick Sync), names and ejects. Movies file
-  cleanly; TV box sets land in a "to sort" folder for the sorter below. The host setting (udev)
+  cleanly; TV box sets land in a "to sort" folder. The host setting (udev)
   and /mnt/storage writes are Jason's side: Claude drafts, Jason applies. Check the Blu-ray
   drive model against MakeMKV before buying.
-- **Sorter for finished downloads**: move or link completed files into the right show/catalog
-  folder with clean names. Claude won't build torrent searching.
 
 ## Streaming
 
@@ -106,13 +97,6 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   the Roku buffers a few chunks first. Keyframes are every 1 s now (was 2 s, 2026-10-15); if still slow, our own HLS.
 - **A ~0.5 s pause once on the Roku.** Note whether it happens at show/commercial switches
   (ours) or randomly (Roku buffering).
-## Packaging for Noel
-
-- **Set up the whole box, not just fs42-live.** Noel's Beelink needs Jason's full stack
-  (Jellyfin, qBittorrent behind gluetun/NordVPN, homepage, filebrowser) as well. The setup
-  script should ask for the NordVPN WireGuard private key and write it to the stack's
-  `.env` (`NORDVPN_PRIVATE_KEY`), alongside USER_ID/GROUP_ID/TIMEZONE/STORAGE_ROOT.
-  Never commit the key.
 
 ## Content
 
@@ -121,8 +105,8 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   idents in `catalog/music/bump`, and split by decade into two channels once there are more
   videos.
 
-- **Movies channel (ch 7)** is live (2026-10-15): 9 retro movies from the Old Drive and the
-  torrents folder, starting on the quarter hour, with "Our Feature Presentation" before each
+- **Movies channel (ch 7)** is live (2026-10-15): 9 retro movies,
+  starting on the quarter hour, with "Our Feature Presentation" before each
   and a break of FS42 idents and '80s ads after. Later: real '80s movie trailers in the breaks
   instead of ads (archive.org has trailer reels), "Next on" slates per movie, and A Christmas
   Story only in December.
