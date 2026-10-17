@@ -1,3 +1,5 @@
+> **This is a fork of FieldStation42 that adds live streaming.** Every channel, including the guide and weather, streams live to a web page. You can surf channels on a phone, a computer or a smart TV's browser, with channel up/down and number entry, and the volume is leveled between shows and commercials. The channels can also show up in Jellyfin's Live TV guide. To share with family outside your home, a free Tailscale account works well and keeps the channels off the public internet. Setup and details: [fs42_live/SETUP.md](fs42_live/SETUP.md).
+
 # FieldStation42
 
 FieldStation42 turns your Linux computer or Raspberry Pi into a broadcast and cable TV simulator. Instead of picking something to watch, you flip channels. Scheduled programming plays on its own timeline, with commercials, station bumps, and all the in-between stuff that made old-school TV feel alive. Learn more at [fieldstation42.com](https://fieldstation42.com).
