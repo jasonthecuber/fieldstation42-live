@@ -86,7 +86,12 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
     (double-tap the sides on a phone), Back returns to live TV.
   - **Step 2 is in** (2026-10-17): menu 4, "On demand": a Continue line (this device's last spot), then channels,
     seasons (when there's more than one), episodes (`/live/ondemand/catalog`, `/live/ondemand/catalog/N`). Spots are
-    kept per device in localStorage (newest 30); at a show's end the next in the catalog starts. Next: retro mode.
+    kept per device in localStorage (newest 30); at a show's end the next in the catalog starts.
+  - **Step 3, retro mode, is in** (2026-10-17): the show planned as if it aired in a slot of its own (the
+    scheduler's own break strategy, cut points, commercials and bumpers), minus the slot's filler after it.
+    Plans are kept server side (newest 100) so a resume gets the same breaks. Skip ahead in a break skips
+    it; the progress line marks the breaks. "Commercial breaks: On/Off" in the On demand menu (default on).
+    Music videos play plain (a lone video would be mostly breaks). Deferred: "start over" (probably not wanted).
 
 ## Content helpers
 
