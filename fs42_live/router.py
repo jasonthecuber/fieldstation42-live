@@ -178,6 +178,20 @@ async def ondemand_retro(channel: int, file: str, plan: str = ""):
     return plan
 
 
+@router.get("/ondemand/shuffle/{channel}")
+async def ondemand_shuffle(channel: int, breaks: bool = True, plan: str = ""):
+    """A music channel's videos shuffled (with an ident and an ad or two every few videos, unless breaks=0),
+    or the shuffle given if it's still kept. Its stream is /live/ondemand/N.ts with file=shuffle:N and plan=<id>."""
+    station = _station(channel)
+    kept = plan and await asyncio.to_thread(ondemand.plan, plan)
+    if kept and kept["file"] == f"shuffle:{channel}":
+        return kept
+    shuffled = await asyncio.to_thread(ondemand.shuffle, station, breaks)
+    if shuffled is None:
+        raise HTTPException(status_code=404, detail="No videos to shuffle on this channel")
+    return shuffled
+
+
 @router.get("/ondemand/{channel}.ts")
 async def ondemand_stream(channel: int, file: str, start: float = 0, plan: str = ""):
     station = _station(channel)

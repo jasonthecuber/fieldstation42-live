@@ -104,6 +104,13 @@
             <div id="odList"></div>
             <p class="keys">Back goes up a level</p>
         </div>
+        <div class="panel" id="startPanel" hidden>
+            <h2 id="startTitle">From the start</h2>
+            <button data-key="1" data-retro="on"><b>1</b>As it aired, with breaks</button>
+            <button data-key="2" data-retro="off"><b>2</b>Just the show</button>
+            <p id="startMsg" class="note"></p>
+            <p class="keys">Back goes to the menu</p>
+        </div>
         <div class="panel" id="reportPanel" hidden>
             <h2>Report a problem</h2>
             <button data-pick="1"><b>1</b>Wrong bumper or ad</button>
@@ -236,17 +243,29 @@
             return h ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
         }
 
-        async function watchFromStart() {
-            const msg = document.getElementById("mainMsg");
+        // "Watch this from the start": the show that's on, with breaks as it aired or just the show (the choice
+        // starts on the last one made, here or in On demand)
+        let fromStart = null;
+        async function startChoices() {
+            const title = document.getElementById("startTitle"), msg = document.getElementById("startMsg");
+            title.textContent = "From the start";
             msg.textContent = "Finding it…";
+            fromStart = null;
+            document.querySelector(`#startPanel [data-retro="${retroOn() ? "on" : "off"}"]`).focus();
             try {
                 const r = await fetch(`/live/ondemand/now/${channels[current].channel}`);
                 if (!r.ok) throw new Error(r.status);
-                const show = await r.json();
-                startOd(show, 0);
+                fromStart = await r.json();
+                title.textContent = fromStart.title;
+                msg.textContent = "";
             } catch (e) {
                 msg.textContent = "Nothing to watch from the start on this channel";
             }
+        }
+        function pickFromStart(retro) {
+            if (!fromStart) return;
+            try { localStorage.setItem("fs42-retro", retro); } catch (e) {}
+            startOd(fromStart, 0);
         }
         // at: seconds into the show itself (in retro mode too, where the stream's own time includes the breaks)
         async function startOd(item, at) {
@@ -255,9 +274,11 @@
             const mine = od = { ...item, plan: undefined, items: undefined, breaks: [], length: item.duration,
                                 at: Math.max(0, at - 5) }; // a few seconds back, to pick up the thread
             odItems(od.channel).catch(() => {}); // ready for the next episode
-            if (retroOn()) {
+            if (retroOn() || od.mix) {
                 try { // (the plan it was watched with before, so the breaks fall where they did)
-                    const r = await fetch(`/live/ondemand/retro/${od.channel}?file=${encodeURIComponent(od.file)}${item.plan ? `&plan=${item.plan}` : ""}`);
+                    const again = item.plan ? `&plan=${item.plan}` : "";
+                    const r = await fetch(od.mix ? `/live/ondemand/shuffle/${od.channel}?breaks=${retroOn() ? 1 : 0}${again}`
+                                                 : `/live/ondemand/retro/${od.channel}?file=${encodeURIComponent(od.file)}${again}`);
                     if (r.ok) {
                         const p = await r.json();
                         if (od !== mine) return;
@@ -266,9 +287,13 @@
                     }
                 } catch (e) {} // (it plays without breaks)
                 if (od !== mine) return; // (something else was picked meanwhile)
+                if (od.mix && !od.plan) { od = null; showOsd("", "Couldn't shuffle; try again"); return tune(current); }
             }
             playOd();
         }
+        // a music channel's videos shuffled, with breaks every few videos in retro mode
+        const shuffleOf = c => ({ channel: c.channel, file: `shuffle:${c.channel}`, mix: true,
+                                  name: `${c.display || c.name}, shuffled`, title: `${c.display || c.name}, shuffled` });
 
         // retro mode: the show is planned as it would air, in pieces with the channel's commercials and bumpers
         // between them. The stream's time runs through the breaks; spots keep the show's own time.
@@ -296,7 +321,7 @@
             return { file: last.file, at: last.skip + last.duration, type: last.type };
         }
         function showTime(pos) { // a point in the stream -> the show's own time (in a break, where the show stopped)
-            if (!od.items) return pos;
+            if (!od.items || od.mix) return pos;
             let at = 0, upTo = 0;
             for (const i of od.items) {
                 if (i.type === "feature") {
@@ -308,6 +333,7 @@
             return upTo;
         }
         function planTime(t) { // the show's own time -> the point in the stream
+            if (od.mix) return t;
             let at = 0;
             for (const i of od.items) {
                 if (i.type === "feature" && t < i.skip + i.duration) return at + Math.max(0, t - i.skip);
@@ -315,12 +341,21 @@
             }
             return at;
         }
+        function nextVideo(pos) { // shuffled music: where the next video starts (past any break before it)
+            let at = 0;
+            for (const i of od.items) {
+                if (at > pos + 1 && i.type === "feature") return at;
+                at += i.duration;
+            }
+            return od.duration - 5;
+        }
         const breakAt = pos => od.breaks.find(([from, to]) => pos >= from && pos < to - 1);
         // the end of a show (its stream just stops): the next one in the channel's catalog, else back to live TV
         function finishOd() {
             const done = od, items = odCatalogs[done.channel] || [];
             logEvent("on demand finished", done.name);
             endOd(); // (it was watched to the end, so its spot goes)
+            if (done.mix) return startOd({ ...done, plan: undefined }, 0); // (a new shuffle)
             const next = items[items.findIndex(i => i.file === done.file) + 1], spot = next && spots()[next.file];
             if (next && items.some(i => i.file === done.file)) startOd({ ...next, channel: done.channel, plan: spot?.plan }, spot?.at || 0);
             else tune(current);
@@ -334,7 +369,7 @@
             delete all[od.file];
             if (at > 30 && length - at > 60) // (not just started, and not finished)
                 all[od.file] = { channel: od.channel, file: od.file, name: od.name, title: od.title, group: od.group,
-                                 label: od.label, duration: length, at, plan: od.plan, when: Date.now() };
+                                 label: od.label, duration: length, at, plan: od.plan, mix: od.mix, when: Date.now() };
             const keep = Object.values(all).sort((a, b) => b.when - a.when).slice(0, 30);
             try { localStorage.setItem("fs42-spots", JSON.stringify(Object.fromEntries(keep.map(s => [s.file, s])))); } catch (e) {}
         }
@@ -381,8 +416,9 @@
         }
         function backToLive() { endOd(); tune(current); }
         function showOdOsd() {
+            const on = playing(odPos()), song = on.type === "feature" && od.mix && on.file.split("/").pop().replace(/\.[^.]+$/, "");
             showOsd((video.paused ? "&#10074;&#10074; " : "") + clock(odPos()),
-                    esc(od.title === od.name ? od.name : `${od.title}: ${od.name}`) + (breakAt(odPos()) ? " (a break: skip ahead skips it)" : ""));
+                    esc(song || (od.title === od.name ? od.name : `${od.title}: ${od.name}`)) + (breakAt(odPos()) ? " (a break: skip ahead skips it)" : ""));
             showProgress();
         }
         function showProgress() {
@@ -391,7 +427,7 @@
         }
         function seekOd(by) {
             const pos = odPos(), inBreak = by > 0 && breakAt(pos);
-            od.at = inBreak ? inBreak[1] : Math.max(0, Math.min(pos + by, od.duration - 5));
+            od.at = inBreak ? inBreak[1] : by > 0 && od.mix ? nextVideo(pos) : Math.max(0, Math.min(pos + by, od.duration - 5));
             playOd();
         }
         function togglePause() {
@@ -628,6 +664,7 @@
             if (id === "channelPanel") fillChannels();
             if (id === "reportPanel") startReport();
             document.getElementById("mainMsg").textContent = "";
+            if (id === "startPanel") return startChoices();
             if (id === "odPanel") return od ? goOd([od.channel, ...(od.group !== undefined ? [od.group] : [])], od.file) : goOd([]);
             const first = id === "channelPanel" ? shown().querySelector(`[data-ch="${channels[current].channel}"]`) : null;
             (first || focusable()[0]).focus();
@@ -681,6 +718,8 @@
                     } else {
                         const g = group ?? groups[0], saved = spots(), eps = items.filter(i => i.group === g);
                         title.textContent = groups.length > 1 ? `${name}: ${g || "Other"}` : name;
+                        if (groups.length < 2 && items.filter(i => i.duration < 600).length > items.length / 2) // (music videos)
+                            line("shuffle", "Shuffle them all", retroOn() ? "with breaks" : "", () => startOd(shuffleOf(c || { channel: ch, name }), 0));
                         eps.forEach(i => {
                             const at = saved[i.file]?.at;
                             line(i.file, esc(i.label), at ? `&#9654; ${clock(at)}` : clock(i.duration),
@@ -750,7 +789,8 @@
             else if ("close" in b.dataset) closeMenu();
             else if (b.dataset.pick) choose(Number(b.dataset.pick));
             else if (b.id === "send") send();
-            else if (b.id === "odButton") { if (od) { closeMenu(); backToLive(); } else watchFromStart(); }
+            else if (b.id === "odButton") { if (od) { closeMenu(); backToLive(); } else showPanel("startPanel"); }
+            else if (b.dataset.retro) pickFromStart(b.dataset.retro);
         });
         document.getElementById("menuButton").onclick = e => { e.stopPropagation(); openMenu(); };
 

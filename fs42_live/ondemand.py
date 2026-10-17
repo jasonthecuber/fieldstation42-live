@@ -10,6 +10,7 @@ import datetime
 import json
 import logging
 import os
+import random
 import re
 import threading
 import time
@@ -26,6 +27,8 @@ from fs42_live.scheduled_source import LEAD, MIN_SEGMENT, NUDGE, ScheduledSource
 
 PLANS = "runtime/ondemand_plans.json"
 KEEP_PLANS = 100  # a device resuming a show in retro mode needs the same breaks as before
+VIDEOS_BETWEEN_BREAKS = (3, 4)  # music shuffled, with breaks
+MAX_AD = 65  # (seconds: a break between music videos is short)
 
 _durations = {}
 _plans = None
@@ -136,8 +139,35 @@ def retro(station, path):
     items = [{"file": e.path, "skip": e.skip, "duration": e.duration, "type": e.content_type}
              for e in block.plan if not e.is_stream and e.duration >= MIN_SEGMENT]
     last = max(i for i, item in enumerate(items) if item["type"] == "feature")
-    items = items[:last + 1]  # (the slot's filler after the show: a recording would stop with the show)
-    plan = {"id": uuid.uuid4().hex[:12], "file": path, "items": items,
+    return _keep(path, items[:last + 1])  # (the slot's filler after the show: a recording would stop with the show)
+
+
+def shuffle(station, breaks):
+    """A music channel's videos in a random order, all of them once; with breaks, every few videos an ident
+    and an ad or two, as music TV ran them. None if it has no videos."""
+    entries = CatalogAPI.get_entries(station)
+    videos = [e for e in entries if e.content_type == "feature" and e.media_type == "video" and e.duration]
+    idents = [e for e in entries if e.content_type == "bump" and e.media_type == "video" and e.duration]
+    ads = [e for e in entries if e.content_type == "commercial" and e.media_type == "video" and e.duration
+           and e.duration <= MAX_AD]
+    if not videos:
+        return None
+    random.shuffle(videos)
+    item = lambda e: {"file": e.path, "skip": 0.0, "duration": e.duration, "type": e.content_type}
+    items, until = [], random.randint(*VIDEOS_BETWEEN_BREAKS)
+    for n, video in enumerate(videos, 1):
+        items.append(item(video))
+        until -= 1
+        if breaks and ads and until == 0 and n < len(videos):
+            ident = [item(random.choice(idents))] if idents else []
+            items += ident + [item(ad) for ad in random.sample(ads, min(len(ads), random.randint(1, 2)))] + ident
+            until = random.randint(*VIDEOS_BETWEEN_BREAKS)
+    return _keep(f"shuffle:{station['channel_number']}", items)
+
+
+def _keep(file, items):
+    """Keeps a plan, so the device can pick it up again later."""
+    plan = {"id": uuid.uuid4().hex[:12], "file": file, "items": items,
             "duration": sum(i["duration"] for i in items), "made": time.time()}
     with _plans_lock:
         plans = _load_plans()
