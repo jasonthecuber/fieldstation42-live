@@ -41,6 +41,8 @@
                     font-size: clamp(14px, 2.5vh, 22px); text-shadow: 2px 2px 0 #000; }
         #progress div { height: 6px; background: rgba(255,255,255,.3); margin-top: 6px; }
         #progress div div { height: 100%; width: 0; background: #3f3; margin: 0; }
+        #progress > div { position: relative; }
+        #progress i { position: absolute; top: -3px; width: 3px; height: 12px; background: #fc3; } /* the breaks, in retro mode */
         #controls.hidden ~ #pause, #controls.hidden ~ #progress { opacity: 0; pointer-events: none; }
         body.paused #controls.hidden ~ #pause, body.paused #controls.hidden ~ #progress { opacity: 1; }
         body.paused #controls.hidden ~ #pause { pointer-events: auto; }
@@ -246,20 +248,81 @@
                 msg.textContent = "Nothing to watch from the start on this channel";
             }
         }
-        function startOd(item, at) {
+        // at: seconds into the show itself (in retro mode too, where the stream's own time includes the breaks)
+        async function startOd(item, at) {
             closeMenu();
             endOd(); // (keeps the spot in whatever was on)
-            od = { ...item, at: Math.max(0, at - 5) }; // a few seconds back, to pick up the thread
+            const mine = od = { ...item, plan: undefined, items: undefined, breaks: [], length: item.duration,
+                                at: Math.max(0, at - 5) }; // a few seconds back, to pick up the thread
             odItems(od.channel).catch(() => {}); // ready for the next episode
+            if (retroOn()) {
+                try { // (the plan it was watched with before, so the breaks fall where they did)
+                    const r = await fetch(`/live/ondemand/retro/${od.channel}?file=${encodeURIComponent(od.file)}${item.plan ? `&plan=${item.plan}` : ""}`);
+                    if (r.ok) {
+                        const p = await r.json();
+                        if (od !== mine) return;
+                        Object.assign(od, { plan: p.id, items: p.items, duration: p.duration, breaks: breaksIn(p.items) });
+                        od.at = at > 0 ? Math.max(0, planTime(at) - 5) : 0;
+                    }
+                } catch (e) {} // (it plays without breaks)
+                if (od !== mine) return; // (something else was picked meanwhile)
+            }
             playOd();
         }
+
+        // retro mode: the show is planned as it would air, in pieces with the channel's commercials and bumpers
+        // between them. The stream's time runs through the breaks; spots keep the show's own time.
+        const retroOn = () => { try { return localStorage.getItem("fs42-retro") !== "off"; } catch (e) { return true; } };
+        function breaksIn(items) {
+            const out = [];
+            let at = 0;
+            for (const i of items) {
+                if (i.type !== "feature") {
+                    const last = out[out.length - 1];
+                    if (last && last[1] === at) last[1] += i.duration; else out.push([at, at + i.duration]);
+                }
+                at += i.duration;
+            }
+            return out;
+        }
+        function playing(pos) { // what's on at a point in the stream, and how far into its file
+            if (!od.items) return { file: od.file, at: pos, type: "feature" };
+            let at = 0;
+            for (const i of od.items) {
+                if (pos < at + i.duration) return { file: i.file, at: i.skip + pos - at, type: i.type };
+                at += i.duration;
+            }
+            const last = od.items[od.items.length - 1];
+            return { file: last.file, at: last.skip + last.duration, type: last.type };
+        }
+        function showTime(pos) { // a point in the stream -> the show's own time (in a break, where the show stopped)
+            if (!od.items) return pos;
+            let at = 0, upTo = 0;
+            for (const i of od.items) {
+                if (i.type === "feature") {
+                    if (pos < at + i.duration) return i.skip + pos - at;
+                    upTo = i.skip + i.duration;
+                } else if (pos < at + i.duration) return upTo;
+                at += i.duration;
+            }
+            return upTo;
+        }
+        function planTime(t) { // the show's own time -> the point in the stream
+            let at = 0;
+            for (const i of od.items) {
+                if (i.type === "feature" && t < i.skip + i.duration) return at + Math.max(0, t - i.skip);
+                at += i.duration;
+            }
+            return at;
+        }
+        const breakAt = pos => od.breaks.find(([from, to]) => pos >= from && pos < to - 1);
         // the end of a show (its stream just stops): the next one in the channel's catalog, else back to live TV
         function finishOd() {
             const done = od, items = odCatalogs[done.channel] || [];
             logEvent("on demand finished", done.name);
             endOd(); // (it was watched to the end, so its spot goes)
-            const next = items[items.findIndex(i => i.file === done.file) + 1];
-            if (next && items.some(i => i.file === done.file)) startOd({ ...next, channel: done.channel }, spots()[next.file]?.at || 0);
+            const next = items[items.findIndex(i => i.file === done.file) + 1], spot = next && spots()[next.file];
+            if (next && items.some(i => i.file === done.file)) startOd({ ...next, channel: done.channel, plan: spot?.plan }, spot?.at || 0);
             else tune(current);
         }
 
@@ -267,11 +330,11 @@
         function spots() { try { return JSON.parse(localStorage.getItem("fs42-spots")) || {}; } catch (e) { return {}; } }
         function saveSpot() {
             if (!od) return;
-            const all = spots(), at = odPos();
+            const all = spots(), at = showTime(odPos()), length = od.length || od.duration;
             delete all[od.file];
-            if (at > 30 && od.duration - at > 60) // (not just started, and not finished)
+            if (at > 30 && length - at > 60) // (not just started, and not finished)
                 all[od.file] = { channel: od.channel, file: od.file, name: od.name, title: od.title, group: od.group,
-                                 label: od.label, duration: od.duration, at, when: Date.now() };
+                                 label: od.label, duration: length, at, plan: od.plan, when: Date.now() };
             const keep = Object.values(all).sort((a, b) => b.when - a.when).slice(0, 30);
             try { localStorage.setItem("fs42-spots", JSON.stringify(Object.fromEntries(keep.map(s => [s.file, s])))); } catch (e) {}
         }
@@ -287,10 +350,17 @@
             document.body.classList.remove("paused");
             pauseButton.innerHTML = "&#10074;&#10074;";
             pauseButton.hidden = progress.hidden = false;
+            const bar = progress.querySelector("div");
+            bar.querySelectorAll("i").forEach(i => i.remove());
+            od.breaks.forEach(([from]) => {
+                const tick = document.createElement("i");
+                tick.style.left = `${100 * from / od.duration}%`;
+                bar.append(tick);
+            });
             snow.classList.remove("hidden");
             stopPlayer();
             player = mpegts.createPlayer({ type: "mpegts", isLive: true,
-                    url: `/live/ondemand/${od.channel}.ts?file=${encodeURIComponent(od.file)}&start=${od.at.toFixed(1)}` },
+                    url: `/live/ondemand/${od.channel}.ts?file=${encodeURIComponent(od.file)}&start=${od.at.toFixed(1)}${od.plan ? `&plan=${od.plan}` : ""}` },
                 { enableStashBuffer: false, autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 30, autoCleanupMinBackwardDuration: 10 });
             player.attachMediaElement(video);
             player.load();
@@ -311,7 +381,8 @@
         }
         function backToLive() { endOd(); tune(current); }
         function showOdOsd() {
-            showOsd((video.paused ? "&#10074;&#10074; " : "") + clock(odPos()), esc(od.title === od.name ? od.name : `${od.title}: ${od.name}`));
+            showOsd((video.paused ? "&#10074;&#10074; " : "") + clock(odPos()),
+                    esc(od.title === od.name ? od.name : `${od.title}: ${od.name}`) + (breakAt(odPos()) ? " (a break: skip ahead skips it)" : ""));
             showProgress();
         }
         function showProgress() {
@@ -319,7 +390,8 @@
             document.getElementById("progressTime").textContent = `${clock(odPos())} / ${clock(od.duration)}`;
         }
         function seekOd(by) {
-            od.at = Math.max(0, Math.min(odPos() + by, od.duration - 5));
+            const pos = odPos(), inBreak = by > 0 && breakAt(pos);
+            od.at = inBreak ? inBreak[1] : Math.max(0, Math.min(pos + by, od.duration - 5));
             playOd();
         }
         function togglePause() {
@@ -533,7 +605,7 @@
             if (!channels.length) return;
             openedAt = Date.now();
             openedChannel = od ? od.channel : channels[current].channel;
-            openedOd = od && { file: od.file, name: od.name, at: odPos() };
+            openedOd = od && { ...playing(odPos()), name: od.name, when: odPos() }; // (in a break, the commercial or bumper on)
             odButton.innerHTML = od ? "<b>3</b>Back to live TV" : "<b>3</b>Watch this from the start";
             odButton.hidden = document.getElementById("odBrowse").hidden = !raw; // (old iPhones play HLS, which has no on-demand stream yet)
             menu.hidden = false;
@@ -594,6 +666,10 @@
                     if (spot) line("continue", `Continue ${esc(spot.name)}`, clock(spot.at), () => startOd(spot, spot.at));
                     for (const c of await (await fetch("/live/ondemand/catalog")).json())
                         line(c.channel, esc(c.display || c.name), c.count, () => goOd([c.channel]));
+                    line("retro", "Commercial breaks", retroOn() ? "On" : "Off", () => {
+                        try { localStorage.setItem("fs42-retro", retroOn() ? "off" : "on"); } catch (e) {}
+                        goOd([], "retro");
+                    });
                 } else {
                     const items = await odItems(ch), groups = [...new Set(items.map(i => i.group))];
                     const c = channels.find(c => c.channel === ch), name = c ? c.display || c.name : ch;
@@ -607,7 +683,8 @@
                         title.textContent = groups.length > 1 ? `${name}: ${g || "Other"}` : name;
                         eps.forEach(i => {
                             const at = saved[i.file]?.at;
-                            line(i.file, esc(i.label), at ? `&#9654; ${clock(at)}` : clock(i.duration), () => startOd({ ...i, channel: ch }, at || 0), i.episode ?? undefined); // (movies get 1 to 9)
+                            line(i.file, esc(i.label), at ? `&#9654; ${clock(at)}` : clock(i.duration),
+                                 () => startOd({ ...i, channel: ch, plan: saved[i.file]?.plan }, at || 0), i.episode ?? undefined); // (movies get 1 to 9)
                         });
                         // else start on the one last watched here
                         from = from ?? eps.filter(i => saved[i.file]).sort((a, b) => saved[b.file].when - saved[a.file].when)[0]?.file;
@@ -640,7 +717,7 @@
             document.querySelectorAll("[data-pick]").forEach(b => b.classList.remove("on"));
             const ch = channels.find(c => c.channel === openedChannel);
             document.getElementById("reportWhen").textContent = openedOd
-                ? `${openedOd.name}, the half minute before ${clock(openedOd.at)}`
+                ? `${openedOd.name}, the half minute before ${clock(openedOd.when)}`
                 : `Channel ${openedChannel} ${ch.display || ch.name}, the half minute before ${new Date(openedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
         }
         function choose(n) {

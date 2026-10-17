@@ -7,16 +7,29 @@ starts a new one from the new point.
 
 import asyncio
 import datetime
+import json
+import logging
 import os
 import re
+import threading
+import time
+import uuid
 from asyncio.subprocess import DEVNULL, PIPE
 
+from fs42.catalog import ShowCatalog
 from fs42.catalog_api import CatalogAPI
+from fs42.liquid_blocks import LiquidBlock
 from fs42.liquid_manager import LiquidManager
+from fs42.liquid_schedule import LiquidSchedule
 from fs42_live import guide
-from fs42_live.scheduled_source import NUDGE, ScheduledSource, Segment
+from fs42_live.scheduled_source import LEAD, MIN_SEGMENT, NUDGE, ScheduledSource, Segment
+
+PLANS = "runtime/ondemand_plans.json"
+KEEP_PLANS = 100  # a device resuming a show in retro mode needs the same breaks as before
 
 _durations = {}
+_plans = None
+_plans_lock = threading.Lock()
 
 
 def now_showing(station):
@@ -103,15 +116,85 @@ async def duration(path):
     return _durations[path]
 
 
-class OnDemandSource(ScheduledSource):
-    """A single file from `start` to its end, through the live channels' encode."""
+def retro(station, path):
+    """Retro mode: the show as it would air in a slot of its own, cut at its breaks with the channel's
+    commercials and bumpers in them, planned by the scheduler's own code. Kept, so a device can pick it
+    up again later with the same breaks. None if it isn't in the catalog."""
+    entry = CatalogAPI.get_by_path(station, path)
+    if entry is None:
+        return None
+    planner = LiquidSchedule.__new__(LiquidSchedule)  # (its slot planning, without loading the channel's schedule)
+    planner._l = logging.getLogger("Liquid")
+    planner.conf, planner.catalog = station, ShowCatalog(station)
+    break_info, strategy, increment = planner._break_info({}, entry.tag, entry.path)
+    length = planner._calc_target_duration(entry.duration, increment, break_info, strategy)
+    if not entry.duration or entry.duration < length / 2:
+        return None  # (a music video, say: live, a slot strings many together; alone it'd be mostly breaks)
+    when = datetime.datetime.now()
+    block = LiquidBlock(entry, when, when + datetime.timedelta(seconds=length), entry.title, strategy, break_info)
+    block.make_plan(planner.catalog)
+    items = [{"file": e.path, "skip": e.skip, "duration": e.duration, "type": e.content_type}
+             for e in block.plan if not e.is_stream and e.duration >= MIN_SEGMENT]
+    last = max(i for i, item in enumerate(items) if item["type"] == "feature")
+    items = items[:last + 1]  # (the slot's filler after the show: a recording would stop with the show)
+    plan = {"id": uuid.uuid4().hex[:12], "file": path, "items": items,
+            "duration": sum(i["duration"] for i in items), "made": time.time()}
+    with _plans_lock:
+        plans = _load_plans()
+        plans[plan["id"]] = plan
+        for old in sorted(plans.values(), key=lambda p: p["made"])[:-KEEP_PLANS]:
+            del plans[old["id"]]
+        tmp = PLANS + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(plans, f)
+        os.replace(tmp, PLANS)
+    return plan
 
-    def __init__(self, station_conf, path, start, length):
+
+def _load_plans():
+    global _plans
+    if _plans is None:
+        try:
+            with open(PLANS) as f:
+                _plans = json.load(f)
+        except (OSError, ValueError):
+            _plans = {}
+    return _plans
+
+
+def plan(plan_id):
+    with _plans_lock:
+        return _load_plans().get(plan_id)
+
+
+def plan_segments(plan, start):
+    """The plan from `start` seconds in."""
+    segments, at = [], 0.0
+    for item in plan["items"]:
+        end = at + item["duration"]
+        if end - start >= MIN_SEGMENT:
+            offset = max(0.0, start - at)
+            segments.append(Segment(item["file"], item["skip"] + offset, item["duration"] - offset))
+        at = end
+    return segments
+
+
+class OnDemandSource(ScheduledSource):
+    """Segments back to back (one file from a point, or a retro plan), through the live channels' encode."""
+
+    def __init__(self, station_conf, segments):
         super().__init__(station_conf)
-        self.segment = Segment(path, start, length - start)
+        self.segments = segments
 
     async def _plan(self, encodes):
-        out = asyncio.Queue()
-        self._start(self._encode(self.segment, 0.0, out))
-        await encodes.put(out)
-        await encodes.put(None)  # the stream ends with the file
+        when, pts = time.monotonic(), 0.0
+        for seg in self.segments:
+            wait = when - time.monotonic() - LEAD  # (each encode starts just before its turn, as on live TV)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            out = asyncio.Queue()
+            self._start(self._encode(seg, pts, out))
+            await encodes.put(out)
+            when += seg.duration
+            pts += seg.duration
+        await encodes.put(None)  # the stream ends with the show

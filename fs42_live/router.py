@@ -157,16 +157,45 @@ async def ondemand_catalog(channel: int):
     return {"channel": channel, "items": await asyncio.to_thread(ondemand.catalog, station)}
 
 
+@router.get("/ondemand/retro/{channel}")
+async def ondemand_retro(channel: int, file: str, plan: str = ""):
+    """Plans a show as it would air, with the channel's commercials and bumpers in its breaks (or, given
+    the plan a device was watching it with, that one again if it's still kept). Its stream is
+    /live/ondemand/N.ts with plan=<id>, and start is then seconds into the plan."""
+    station = _station(channel)
+    if ondemand.allowed(station, file) is None:
+        raise HTTPException(status_code=404, detail="Not in this channel's catalog")
+    kept = plan and await asyncio.to_thread(ondemand.plan, plan)
+    if kept and kept["file"] == file:
+        return kept
+    try:
+        plan = await asyncio.to_thread(ondemand.retro, station, file)
+    except Exception as e:
+        _l.warning(f"{station['network_name']}: couldn't plan breaks for {os.path.basename(file)}: {e}")
+        plan = None
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Couldn't plan breaks for that")
+    return plan
+
+
 @router.get("/ondemand/{channel}.ts")
-async def ondemand_stream(channel: int, file: str, start: float = 0):
+async def ondemand_stream(channel: int, file: str, start: float = 0, plan: str = ""):
     station = _station(channel)
     path = ondemand.allowed(station, file)
-    length = path and await ondemand.duration(path)
-    if not length:
-        raise HTTPException(status_code=404, detail="Not in this channel's catalog")
-    start = max(0.0, min(start, length - 1))
-    _l.info(f"{station['network_name']}: on demand {os.path.basename(path)} from {start:.0f}s")
-    return StreamingResponse(ondemand.OnDemandSource(station, path, start, length).stream(), media_type="video/mp2t")
+    if plan:
+        p = await asyncio.to_thread(ondemand.plan, plan)
+        if p is None or p["file"] != file:
+            raise HTTPException(status_code=404, detail="That plan has gone")
+        start = max(0.0, min(start, p["duration"] - 1))
+        segments = ondemand.plan_segments(p, start)
+    else:
+        length = path and await ondemand.duration(path)
+        if not length:
+            raise HTTPException(status_code=404, detail="Not in this channel's catalog")
+        start = max(0.0, min(start, length - 1))
+        segments = [ondemand.Segment(path, start, length - start)]
+    _l.info(f"{station['network_name']}: on demand {os.path.basename(file)} from {start:.0f}s{' (retro)' if plan else ''}")
+    return StreamingResponse(ondemand.OnDemandSource(station, segments).stream(), media_type="video/mp2t")
 
 
 @router.post("/report")
