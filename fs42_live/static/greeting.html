@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Greeting</title>
+    <!-- The greeting channel's page, captured at 640x480 like the other web channels. It shows the greeting
+         set from the live page (or tools/say.py), and the station's own card when there isn't one. -->
+    <style>
+        html, body { margin: 0; width: 640px; height: 480px; overflow: hidden; background: #0a0a3a;
+                     font-family: "Liberation Sans", Arial, sans-serif; color: #fff; }
+        /* an 80s station card: stripes sweeping behind, scan lines over the top */
+        #stripes { position: absolute; left: -50%; right: -50%; top: 300px; height: 90px; transform: rotate(-8deg);
+                   background: linear-gradient(#f33 0 20%, #f93 20% 40%, #fd3 40% 60%, #3c6 60% 80%, #39f 80%);
+                   opacity: .85; animation: sweep 6s ease-in-out infinite alternate; }
+        @keyframes sweep { from { transform: rotate(-8deg) translateX(-40px); } to { transform: rotate(-8deg) translateX(40px); } }
+        #card { position: absolute; inset: 40px 40px 150px; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; text-align: center; }
+        #text { font-weight: bold; color: #ff3; text-shadow: 4px 4px 0 #c03, 8px 8px 0 #000; line-height: 1.1;
+                animation: glow 2.4s ease-in-out infinite alternate; }
+        @keyframes glow { from { transform: scale(1); } to { transform: scale(1.04); } }
+        #sub { margin-top: 18px; font-size: 24px; text-shadow: 3px 3px 0 #000; }
+        #clock { position: absolute; right: 28px; bottom: 22px; font: bold 26px "Liberation Mono", monospace;
+                 text-shadow: 2px 2px 0 #000; }
+        #scan { position: absolute; inset: 0; pointer-events: none;
+                background: repeating-linear-gradient(transparent 0 2px, rgba(0,0,0,.25) 2px 3px); }
+    </style>
+</head>
+<body>
+    <div id="stripes"></div>
+    <div id="card"><div id="text"></div><div id="sub"></div></div>
+    <div id="clock"></div>
+    <div id="scan"></div>
+    <script>
+        const DEFAULT = { text: "FieldStation 42", sub: "Live retro TV" };
+        let shown = "";
+        function size(text) { // big for a few words, smaller for a sentence
+            const n = text.length;
+            return n <= 10 ? 84 : n <= 20 ? 64 : n <= 40 ? 48 : n <= 80 ? 36 : 28;
+        }
+        async function refresh() {
+            let g = null;
+            try { g = (await (await fetch("/live/messages")).json()).greeting; } catch (e) {}
+            const m = g || DEFAULT;
+            const key = m.text + "\n" + (m.sub || "");
+            if (key !== shown) {
+                shown = key;
+                const text = document.getElementById("text");
+                text.textContent = m.text;
+                text.style.fontSize = size(m.text) + "px";
+                document.getElementById("sub").textContent = m.sub || "";
+            }
+        }
+        function tick() {
+            document.getElementById("clock").textContent =
+                new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+        }
+        refresh();
+        tick();
+        setInterval(refresh, 3000);
+        setInterval(tick, 1000);
+    </script>
+</body>
+</html>

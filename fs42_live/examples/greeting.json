@@ -1,0 +1,10 @@
+{
+  "station_conf": {
+    "network_name": "Hello",
+    "channel_number": 42,
+    "network_type": "web",
+    "live_listing": "Greetings from the station",
+    "live_music": "/runtime/weather_music",
+    "web_url": "/live/greeting.html"
+  }
+}

@@ -7,7 +7,7 @@ from asyncio.subprocess import DEVNULL, PIPE
 from dataclasses import dataclass
 
 from fs42.liquid_manager import LiquidManager
-from fs42_live import captions, hwaccel, loudness
+from fs42_live import captions, hwaccel, loudness, messages
 from fs42_live.profile import RETRO
 from fs42_live.schedule_keeper import refresh_soon
 
@@ -181,6 +181,7 @@ class ScheduledSource:
             if captions.wanted(self.station, seg.path):
                 overlay = captions.drawtext(seg.path, seg.start, seg.start + seg.duration)
 
+        overlay = messages.join(overlay, messages.crawl_filter(self.station["channel_number"], pts))
         hw = await asyncio.to_thread(hwaccel.vaapi)
         _l.info(f"{self.network}: {seg.path} from {seg.start:.1f}s for {seg.duration:.1f}s")
         proc = await self._spawn(

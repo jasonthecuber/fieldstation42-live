@@ -45,6 +45,23 @@
                         <thead><tr><th>Seen</th><th>Ch</th><th>Problem</th><th>Playing then</th></tr></thead>
                         <tbody id="reports"><tr><td colspan="4">Loading…</td></tr></tbody>
                     </table>
+                    <h3>Messages</h3>
+                    <p>A crawl along the bottom of a channel, or the greeting on the greeting channel. Each one ends on its own.</p>
+                    <form id="msgForm" class="pure-form pure-form-stacked">
+                        <select id="msgWhere"></select>
+                        <input id="msgText" maxlength="300" placeholder="Hi Doug!" autocomplete="off" class="pure-input-1">
+                        <input id="msgSub" maxlength="200" placeholder="Second line (greeting only)" autocomplete="off" class="pure-input-1">
+                        <select id="msgMinutes">
+                            <option value="15">for 15 minutes</option><option value="30" selected>for 30 minutes</option>
+                            <option value="60">for an hour</option><option value="120">for 2 hours</option><option value="480">for 8 hours</option>
+                        </select>
+                        <button class="pure-button pure-button-primary">Put it on the air</button>
+                        <span id="msgNote" class="muted"></span>
+                    </form>
+                    <table class="pure-table pure-table-horizontal">
+                        <thead><tr><th>Where</th><th>Message</th><th>Until</th><th></th></tr></thead>
+                        <tbody id="messages"><tr><td colspan="4">Loading…</td></tr></tbody>
+                    </table>
                     <h3>Jellyfin setup</h3>
                     <dl>
                         <dt>M3U tuner</dt><dd><code>${base}/live/channels.m3u</code></dd>
@@ -59,6 +76,7 @@
                     </dl>
                 </div>`;
             document.body.innerHTML = await window.fs42Common.createPageLayout('Live', content);
+            document.getElementById('msgForm').addEventListener('submit', putMessage);
             refresh();
             setInterval(refresh, REFRESH_MS);
         });
@@ -101,6 +119,7 @@
             try {
                 const status = await (await fetch('/live/status')).json();
                 document.getElementById('channels').replaceChildren(...status.channels.map(row));
+                fillWhere(status.channels);
                 document.getElementById('encoder').textContent = status.encoder;
                 document.getElementById('profile').textContent = status.profile;
             } catch (e) {
@@ -112,6 +131,68 @@
             } catch (e) {
                 console.warn('reports failed', e);
             }
+            try {
+                const on = await (await fetch('/live/messages')).json();
+                const rows = Object.entries(on).map(([key, m]) => messageRow(key, m));
+                document.getElementById('messages').replaceChildren(...(rows.length ? rows : [emptyRow(4, 'Nothing on the air')]));
+            } catch (e) {
+                console.warn('messages failed', e);
+            }
+        }
+
+        // where a message can go: every channel's crawl, one channel's, or the greeting channel
+        function fillWhere(channels) {
+            const where = document.getElementById('msgWhere');
+            if (where.options.length) return;
+            const option = (value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; return o; };
+            where.append(option('greeting', 'Greeting channel (big title card)'), option('crawl:all', 'Crawl on every channel'),
+                ...channels.map(c => option(`crawl:${c.channel}`, `Crawl on ${c.channel} ${c.name}`)));
+        }
+
+        function whereName(key) {
+            if (key === 'greeting') return 'Greeting channel';
+            const ch = key.split(':')[1];
+            return ch === 'all' ? 'Crawl, every channel' : `Crawl, channel ${ch}`;
+        }
+
+        async function sendMessage(key, text, sub, minutes) {
+            const [kind, channel] = key.split(':');
+            const r = await fetch('/live/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kind, channel, text, sub, minutes }) });
+            if (!r.ok) throw new Error(r.status);
+        }
+
+        async function putMessage(e) {
+            e.preventDefault();
+            const text = document.getElementById('msgText').value.trim();
+            const msgNote = document.getElementById('msgNote');
+            if (!text) { msgNote.textContent = 'Type a message first'; return; }
+            msgNote.textContent = 'Sending…';
+            try {
+                await sendMessage(document.getElementById('msgWhere').value, text,
+                    document.getElementById('msgSub').value.trim(), Number(document.getElementById('msgMinutes').value));
+                msgNote.textContent = 'On the air (a crawl shows after a quick reconnect)';
+                refresh();
+            } catch (err) {
+                msgNote.textContent = "Couldn't send it; try again";
+            }
+        }
+
+        function messageRow(key, m) {
+            const cell = document.createElement('tr');
+            cell.innerHTML = '<td></td><td></td><td></td><td><button class="pure-button">Take off</button></td>';
+            cell.children[0].textContent = whereName(key);
+            cell.children[1].textContent = m.text + (m.sub ? ` / ${m.sub}` : '');
+            cell.children[2].textContent = new Date(m.until * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            cell.querySelector('button').addEventListener('click', async () => { await sendMessage(key, '', '', 1); refresh(); });
+            return cell;
+        }
+
+        function emptyRow(columns, text) {
+            const cell = document.createElement('tr');
+            cell.innerHTML = `<td colspan="${columns}" class="muted"></td>`;
+            cell.firstChild.textContent = text;
+            return cell;
         }
 
         function emptyReports() {

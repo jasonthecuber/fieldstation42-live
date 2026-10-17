@@ -9,7 +9,7 @@ import urllib.parse
 from asyncio.subprocess import DEVNULL, PIPE
 
 from fs42.station_manager import StationManager
-from fs42_live import hwaccel, settings
+from fs42_live import hwaccel, messages, settings
 from fs42_live.profile import RETRO
 
 _l = logging.getLogger("FS42LIVE")
@@ -70,7 +70,7 @@ class WebPageSource:
                 "-video_size", f"{p.width}x{p.height}", "-i", self.display,
                 *audio_in,
                 "-map", "0:v", "-map", audio_map,
-                "-vf", p.video_filter(hw), "-af", "aresample=async=1",
+                "-vf", p.video_filter(hw, messages.crawl_filter(self.station["channel_number"])), "-af", "aresample=async=1",
                 *p.encode_args(hw),
                 "-f", "mpegts", "pipe:1",
                 stdout=PIPE,

@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import guide, hls, hwaccel, ondemand, reports, settings
+from fs42_live import guide, hls, hwaccel, messages, ondemand, reports, settings
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -179,6 +179,40 @@ async def player_log(request: Request):
     """The web player's errors, stalls and recoveries, so a TV browser's troubles show in the server log."""
     _l.info(f"player {request.client.host}: {(await request.body()).decode(errors='replace')[:300]}")
     return {}
+
+
+@router.get("/messages")
+async def get_messages():
+    return await asyncio.to_thread(messages.current)
+
+
+@router.post("/messages")
+async def put_message(request: Request):
+    """{"kind": "crawl", "channel": 12 or "all", "text": "Hi Doug!", "minutes": 30}, or {"kind": "greeting",
+    "text": ..., "sub": ..., "minutes": ...} for the greeting channel. No text takes it off. Channels showing
+    a changed crawl restart, so it's on (or off) right away; their viewers reconnect in a moment."""
+    body = await request.json()
+    kind, text = body.get("kind"), str(body.get("text") or "")
+    minutes = float(body.get("minutes") or messages.DEFAULT_MINUTES)
+    if kind == "crawl":
+        channel = str(body.get("channel") or "all")
+        if channel != "all":
+            _station(int(channel))
+        saved = await asyncio.to_thread(messages.put, f"crawl:{channel}", text, minutes)
+        for n in list(hub.status()) if channel == "all" else [int(channel)]:
+            hub.restart(n)
+    elif kind == "greeting":
+        saved = await asyncio.to_thread(messages.put, "greeting", text, minutes, sub=str(body.get("sub") or "")[:200])
+    else:
+        raise HTTPException(status_code=400, detail='kind is "crawl" or "greeting"')
+    _l.info(f"message {kind} {body.get('channel', '')}: {text[:80]!r} for {minutes:g} min" if text.strip()
+            else f"message {kind} {body.get('channel', '')} cleared")
+    return saved
+
+
+@router.get("/greeting.html")
+async def greeting_page():
+    return FileResponse(os.path.join(STATIC, "greeting.html"), headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/reports")
