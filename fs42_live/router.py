@@ -145,8 +145,15 @@ async def report_problem(request: Request):
         raise HTTPException(status_code=400, detail="Say what's wrong")
     saved = await asyncio.to_thread(reports.save, station, pick, note, float(body.get("ago") or 0),
                                     request.headers.get("user-agent", ""))
-    _l.info(f"problem report: ch {saved['channel']} {saved['problem']} {saved['note']!r}")
-    return {"saved": True}
+    _l.info(f"problem report #{saved['number']}: ch {saved['channel']} {saved['problem']} {saved['note']!r}")
+    return {"saved": True, "number": saved["number"]}
+
+
+@router.post("/player/log")
+async def player_log(request: Request):
+    """The web player's errors, stalls and recoveries, so a TV browser's troubles show in the server log."""
+    _l.info(f"player {request.client.host}: {(await request.body()).decode(errors='replace')[:300]}")
+    return {}
 
 
 @router.get("/reports")

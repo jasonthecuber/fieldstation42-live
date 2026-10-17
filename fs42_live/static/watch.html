@@ -117,10 +117,39 @@
         // retries after a dropped or stuck stream wait longer each time (2, 4, 8, 16, then 30 s), since each
         // builds a new player and a TV browser runs short of memory; a picture playing resets it
         let fails = 0;
-        function retune() { clearTimeout(retry); retry = setTimeout(() => tune(current), Math.min(2000 * 2 ** fails++, 30000)); }
+        function retune() {
+            clearTimeout(retry);
+            // a TV browser's video can die for good after a lot of surfing (the stream keeps arriving, the
+            // picture never starts); a fresh page is the closest the page can get to restarting the browser
+            if (fails >= 3 && mayReload()) {
+                logEvent("reloading the page");
+                try { sessionStorage.setItem("fs42-autostart", "1"); } catch (e) {}
+                setTimeout(() => location.reload(), 500);
+                return;
+            }
+            retry = setTimeout(() => tune(current), Math.min(2000 * 2 ** fails++, 30000));
+        }
+        function mayReload() { // at most once in 10 minutes, so a dead server doesn't loop the page
+            try {
+                if (Date.now() - Number(sessionStorage.getItem("fs42-reloaded") || 0) < 600000) return false;
+                sessionStorage.setItem("fs42-reloaded", Date.now());
+                return true;
+            } catch (e) { return false; }
+        }
+
+        // what the player runs into, to the server's log, since a TV browser has nowhere to show it
+        let tunes = 0, lastLog = 0;
+        function logEvent(event, detail = "") {
+            if (Date.now() - lastLog < 1000) return;
+            lastLog = Date.now();
+            const err = video.error ? ` error=${video.error.code}` : "";
+            const state = `tunes=${tunes} fails=${fails} ready=${video.readyState} net=${video.networkState}${err} paused=${video.paused}`;
+            fetch("/live/player/log", { method: "POST", body: `ch ${channels[current] ? channels[current].channel : "-"} ${event} ${detail} | ${state}` }).catch(() => {});
+        }
 
         function tune(index) {
             clearTimeout(retry);
+            tunes++;
             // the Samsung wakes its pointer when the stream changes (remote, typed number or a retry after a
             // dropped stream); if it was hidden, keep it hidden
             if (document.body.classList.contains("idle")) { hideSoon(); hiddenTuneAt = Date.now(); }
@@ -145,7 +174,10 @@
                       autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 30, autoCleanupMinBackwardDuration: 10 });
                 player.attachMediaElement(video);
                 player.load();
-                player.on(mpegts.Events.ERROR, retune);
+                player.on(mpegts.Events.ERROR, (type, detail, info) => {
+                    logEvent("error", `${type} ${detail} ${info && info.msg ? info.msg : ""}`);
+                    retune();
+                });
             } else {
                 video.src = `/live/hls/${ch.channel}/index.m3u8`;
             }
@@ -177,10 +209,14 @@
             });
         }
 
-        video.addEventListener("error", () => !raw && retune());
+        video.addEventListener("error", () => { logEvent("video error"); if (!raw) retune(); });
+        let reloaded = false;
+        try { reloaded = !!sessionStorage.getItem("fs42-autostart"); } catch (e) {}
         video.addEventListener("playing", () => {
             snow.classList.add("hidden");
+            if (fails || reloaded) logEvent(reloaded ? "playing after a page reload" : "playing again");
             fails = 0;
+            reloaded = false;
             if (document.body.classList.contains("idle")) hideSoon();  // the new picture can wake the Samsung's pointer too
         });
 
@@ -199,7 +235,11 @@
         setInterval(() => {
             if (!channels.length || video.paused) return;
             if (video.currentTime !== lastTime) { lastTime = video.currentTime; lastMoved = Date.now(); }
-            else if (Date.now() - lastMoved > STALL) { lastMoved = Date.now() + 30000; retune(); } // (no re-check while it waits)
+            else if (Date.now() - lastMoved > STALL) { // (no re-check while it waits)
+                logEvent("stalled");
+                lastMoved = Date.now() + 30000;
+                retune();
+            }
         }, 1000);
 
         function tuneNumber(n) {
@@ -259,6 +299,11 @@
             lastHide = keyAt;
             hideTimers = [100, 1000].map(ms => setTimeout(rehide, ms));
         }
+        // and as a fallback for a wake none of that caught: while it's meant to be hidden, hide it
+        // again every few seconds (switching between the two hidden kinds shows nothing)
+        setInterval(() => {
+            if (document.body.classList.contains("idle") && Date.now() - lastHide > 1500) rehide(); // (clear of the follow-ups)
+        }, 3000);
         document.addEventListener("keydown", hideSoon);
         document.addEventListener("mousemove", () => {
             if (Date.now() - keyAt < 1500) return;
@@ -345,7 +390,9 @@
                 const r = await fetch("/live/report", { method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ channel: openedChannel, pick, note: note.value, ago: (Date.now() - openedAt) / 1000 }) });
                 if (!r.ok) throw new Error(r.status);
-                reportMsg.textContent = "Thanks! It's been sent.";
+                const saved = await r.json();
+                if (!saved.number) throw new Error("not saved");
+                reportMsg.textContent = `Thanks! Saved as report #${saved.number}.`;
                 setTimeout(closeMenu, 1500);
             } catch (e) {
                 reportMsg.textContent = "Couldn't send it; try again";
@@ -407,6 +454,10 @@
             const i = channels.findIndex(c => c.channel === wanted);
             tune(i >= 0 ? i : 0);
         };
+        // back from a reload the player did itself: turn on again (full screen needs a key press, though)
+        try {
+            if (sessionStorage.getItem("fs42-autostart")) { sessionStorage.removeItem("fs42-autostart"); start.onclick(); }
+        } catch (e) {}
     </script>
 </body>
 </html>

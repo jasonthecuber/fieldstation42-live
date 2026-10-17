@@ -54,6 +54,8 @@ def save(station, pick, note, ago, agent):
     with _lock:
         with open(STORE, "a") as f:
             f.write(json.dumps(report) + "\n")
+        with open(STORE) as f:
+            report["number"] = sum(1 for _ in f)  # shown to the viewer, so they know it arrived
     return report
 
 
