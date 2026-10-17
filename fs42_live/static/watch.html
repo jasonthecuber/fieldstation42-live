@@ -317,7 +317,7 @@
         // true if on demand took the key: OK (or play/pause) pauses, left and right skip 30 s, Back goes back to live TV
         function odKeys(e) {
             const k = e.key, c = e.keyCode;
-            if ((k === "Enter" && !e.target.closest("button")) || k === " " || k === "MediaPlayPause" || c === 10252
+            if ((k === "Enter" && !e.target.closest?.("button")) || k === " " || k === "MediaPlayPause" || c === 10252
                 || ((k === "MediaPlay" || c === 415) && video.paused) || ((k === "MediaPause" || c === 19) && !video.paused)) togglePause();
             else if (k === "ArrowLeft" || k === "MediaRewind" || c === 412) seekOd(-30);
             else if (k === "ArrowRight" || k === "MediaFastForward" || c === 417) seekOd(30);
@@ -438,7 +438,7 @@
                 showOsd(typed + "-");
                 clearTimeout(typedTimer);
                 typedTimer = setTimeout(() => { tuneNumber(Number(typed)); typed = ""; }, 1200);
-            } else if (k === "f" || (k === "Enter" && !e.target.closest("button"))) {
+            } else if (k === "f" || (k === "Enter" && !e.target.closest?.("button"))) {
                 toggleFull();
             } else return;
             e.preventDefault(); // so a TV browser doesn't also scroll or move its focus
@@ -568,7 +568,7 @@
             }
         }
         menu.addEventListener("click", e => {
-            const b = e.target.closest("button");
+            const b = e.target.closest?.("button");
             if (!b) { if (e.target === menu) closeMenu(); return; } // a tap outside the box closes it
             if (b.dataset.go) showPanel(b.dataset.go);
             else if ("close" in b.dataset) closeMenu();
