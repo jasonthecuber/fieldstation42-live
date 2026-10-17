@@ -88,10 +88,10 @@
         <div class="panel" id="mainPanel">
             <h2>Menu</h2>
             <button data-key="1" data-go="channelPanel"><b>1</b>Channels</button>
-            <button data-key="2" data-go="reportPanel"><b>2</b>Report a problem</button>
-            <button data-key="3" id="odButton"><b>3</b>Watch this from the start</button>
-            <button data-key="4" data-go="odPanel" id="odBrowse"><b>4</b>On demand</button>
-            <button data-key="5" id="breaksButton" hidden></button>
+            <button data-key="2" id="odButton"><b>2</b>Watch this from the start</button>
+            <button data-key="3" data-go="odPanel" id="odBrowse"><b>3</b>On demand</button>
+            <button data-key="4" id="breaksButton" hidden></button>
+            <button data-key="5" data-go="reportPanel"><b>5</b>Report a problem</button>
             <button data-key="0" data-close><b>0</b>Close</button>
             <p id="mainMsg" class="note"></p>
             <p class="keys">Back or Info closes the menu</p>
@@ -658,11 +658,11 @@
             openedAt = Date.now();
             openedChannel = od ? od.channel : channels[current].channel;
             openedOd = od && { ...playing(odPos()), name: od.name, when: odPos() }; // (in a break, the commercial or bumper on)
-            odButton.innerHTML = od ? "<b>3</b>Back to live TV" : "<b>3</b>Watch this from the start";
+            odButton.innerHTML = od ? "<b>2</b>Back to live TV" : "<b>2</b>Watch this from the start";
             odButton.hidden = document.getElementById("odBrowse").hidden = !raw; // (old iPhones play HLS, which has no on-demand stream yet)
             const breaksButton = document.getElementById("breaksButton");
             breaksButton.hidden = !od; // (watching on demand: switch the breaks on or off, carrying on from the same spot)
-            breaksButton.innerHTML = `<b>5</b>Commercial breaks<small>${retroOn() ? "On" : "Off"}</small>`;
+            breaksButton.innerHTML = `<b>4</b>Commercial breaks<small>${retroOn() ? "On" : "Off"}</small>`;
             menu.hidden = false;
             controls.classList.add("hidden");
             history.pushState({ menu: 1 }, "", location.hash); // so a browser's own Back closes the menu, not the page
