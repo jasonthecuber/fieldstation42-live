@@ -20,7 +20,7 @@ from fs42.station_manager import StationManager
 _l = logging.getLogger("FS42LIVE")
 
 STORE = "runtime/bars.json"  # realpath -> {"size": bytes, "crop": [w, h, x, y] or None}
-SAMPLES = (0.15, 0.4, 0.65, 0.85)  # where through the file to look
+SAMPLES = (0.1, 0.3, 0.5, 0.7, 0.9)  # where through the file to look
 SAMPLE_SECONDS = 2
 LEAST = 0.08  # bars thinner than this (of the height, or the width) are left alone: edge noise, not bars
 CHECK_EVERY = 600
@@ -73,8 +73,8 @@ def crop_filter(path):
 
 
 def find(path, duration):
-    """[w, h, x, y] of the picture inside a file's bars, or None if it has none worth cutting. The samples'
-    pictures together, so a dark scene in one doesn't shrink it."""
+    """[w, h, x, y] of the picture inside a file's bars, or None if it has none worth cutting. The middle
+    sample by size, so neither a dark scene (smaller) nor one bright shot over the bars (bigger) decides it."""
     boxes, size = [], None
     for at in SAMPLES:
         log = subprocess.run(
@@ -87,12 +87,11 @@ def find(path, duration):
         if found:
             w, h, x, y = map(int, found[-1])
             if w > 0 and h > 0:
-                boxes.append((x, y, x + w, y + h))
+                boxes.append((w, h, x, y))
     if not boxes or not size:
         return None
     width, height = int(size[1]), int(size[2])
-    x, y = min(b[0] for b in boxes), min(b[1] for b in boxes)
-    w, h = max(b[2] for b in boxes) - x, max(b[3] for b in boxes) - y
+    w, h, x, y = sorted(boxes, key=lambda b: b[0] * b[1])[len(boxes) // 2]
     if h > height * (1 - LEAST) and w > width * (1 - LEAST):
         return None
     return [w, h, x, y]
