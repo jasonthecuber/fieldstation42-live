@@ -25,19 +25,35 @@ def _station(channel):
     return station
 
 
+ZOOMS = ("letterbox", "16:9", "14:9", "4:3")
+
+
+def _zoomed(station, crop):
+    """The station as a viewer who picked their own zoom (`crop`) sees it: wide pictures letterboxed, or their
+    sides cropped to that shape, instead of the channel's live_crop_to."""
+    if not crop or station["network_type"] == "web":
+        return station
+    if crop not in ZOOMS:
+        raise HTTPException(status_code=400, detail=f"crop is one of {', '.join(ZOOMS)}")
+    crop_to = None if crop == "letterbox" else crop
+    if crop_to == station.get("live_crop_to"):
+        return station
+    return {**station, "live_crop_to": crop_to, "_zoomed": True}
+
+
 @router.get("/stream/{channel}.ts")
-async def stream_channel(channel: int, surf: bool = False):
-    station = _station(channel)
+async def stream_channel(channel: int, surf: bool = False, crop: str = ""):
+    station = _zoomed(_station(channel), crop)
     return StreamingResponse(hub.watch(station, surfing=surf), media_type="video/mp2t")
 
 
 @router.post("/warm")
-async def warm(channels: str):
+async def warm(channels: str, crop: str = ""):
     """The web player names the channels next to the one it's playing, every few seconds."""
     for n in channels.split(","):
         station = StationManager().station_by_channel(int(n)) if n.isdigit() else None
         if station and station["network_type"] not in guide.NOT_YET_STREAMABLE:
-            hub.warm(station)
+            hub.warm(_zoomed(station, crop))
     return {}
 
 
@@ -198,12 +214,7 @@ async def ondemand_shuffle(channel: int, breaks: bool = True, plan: str = ""):
 
 @router.get("/ondemand/{channel}.ts")
 async def ondemand_stream(channel: int, file: str, start: float = 0, plan: str = "", crop: str = ""):
-    """crop: the viewer's own zoom ("letterbox", "16:9", "14:9" or "4:3") instead of the channel's live_crop_to."""
-    station = _station(channel)
-    if crop:
-        if crop not in ("letterbox", "16:9", "14:9", "4:3"):
-            raise HTTPException(status_code=400, detail="crop is letterbox, 16:9, 14:9 or 4:3")
-        station = {**station, "live_crop_to": None if crop == "letterbox" else crop}
+    station = _zoomed(_station(channel), crop)
     path = ondemand.allowed(station, file)
     if plan:
         p = await asyncio.to_thread(ondemand.plan, plan)

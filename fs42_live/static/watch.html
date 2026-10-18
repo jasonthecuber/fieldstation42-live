@@ -221,7 +221,7 @@
             if (raw) {
                 video.disableRemotePlayback = true; // iOS's ManagedMediaSource wants this
                 // autoCleanup drops video already played (the default keeps all of it, hours on a TV left on)
-                player = mpegts.createPlayer({ type: "mpegts", isLive: true, url: `/live/stream/${ch.channel}.ts?surf=1` },
+                player = mpegts.createPlayer({ type: "mpegts", isLive: true, url: `/live/stream/${ch.channel}.ts?surf=1${zoomArg()}` },
                     { enableStashBuffer: false, liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 3,
                       autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 30, autoCleanupMinBackwardDuration: 10 });
                 player.attachMediaElement(video);
@@ -311,20 +311,22 @@
             try { localStorage.setItem("fs42-retro", retroOn() ? "off" : "on"); } catch (e) {}
             if (od) startOd({ ...od, duration: od.length }, showTime(odPos()) + 5); // (a shuffle keeps its order)
         }
-        // on demand, how a wide movie fits the 4:3 picture, kept per device: the channel's own way (as live), or its
-        // sides cropped down to a shape (pan and scan). A change carries on from the same spot.
+        // how a wide movie fits the 4:3 picture, kept per device: the channel's own way, or letterboxed, or its sides
+        // cropped down to a shape (pan and scan). Live, a zoom of its own is a second encode of the channel, shared
+        // with anyone else who picked it; on demand, a change carries on from the same spot.
         const ZOOMS = [["", "Normal"], ["letterbox", "Letterbox"], ["16:9", "16:9"], ["14:9", "14:9"], ["4:3", "Full screen"]];
         const zoom = () => { try { return localStorage.getItem("fs42-zoom") || ""; } catch (e) { return ""; } };
+        const zoomArg = () => zoom() ? `&crop=${encodeURIComponent(zoom())}` : "";
         function showZoom() {
             const b = document.getElementById("zoomButton");
-            b.hidden = !od;
+            b.hidden = !raw; // (old iPhones play HLS, which has no zoom)
             b.innerHTML = `<b>5</b>Zoom<small>${(ZOOMS.find(z => z[0] === zoom()) || ZOOMS[0])[1]}</small>`;
         }
         function nextZoom() {
             const i = ZOOMS.findIndex(z => z[0] === zoom());
             try { localStorage.setItem("fs42-zoom", ZOOMS[(i + 1) % ZOOMS.length][0]); } catch (e) {}
             showZoom(); // (the menu stays open, so a few presses get to the one wanted)
-            if (od) { od.at = odPos(); playOd(); }
+            if (od) { od.at = odPos(); playOd(); } else tune(current);
         }
         // a music channel's videos shuffled, with breaks every few videos in retro mode
         const shuffleOf = c => ({ channel: c.channel, file: `shuffle:${c.channel}`, mix: true,
@@ -436,7 +438,7 @@
             snow.classList.remove("hidden");
             stopPlayer();
             player = mpegts.createPlayer({ type: "mpegts", isLive: true,
-                    url: `/live/ondemand/${od.channel}.ts?file=${encodeURIComponent(od.file)}&start=${od.at.toFixed(1)}${od.plan ? `&plan=${od.plan}` : ""}${zoom() ? `&crop=${encodeURIComponent(zoom())}` : ""}` },
+                    url: `/live/ondemand/${od.channel}.ts?file=${encodeURIComponent(od.file)}&start=${od.at.toFixed(1)}${od.plan ? `&plan=${od.plan}` : ""}${zoomArg()}` },
                 { enableStashBuffer: false, autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 30, autoCleanupMinBackwardDuration: 10 });
             player.attachMediaElement(video);
             player.load();
@@ -523,7 +525,7 @@
                 near.add(channels[((current - d) % channels.length + channels.length) % channels.length].channel);
             }
             near.delete(channels[current].channel);
-            if (near.size) fetch(`/live/warm?channels=${[...near].join(",")}`, { method: "POST" }).catch(() => {});
+            if (near.size) fetch(`/live/warm?channels=${[...near].join(",")}${zoomArg()}`, { method: "POST" }).catch(() => {});
         }
         setInterval(warm, 2000);
         document.addEventListener("visibilitychange", warm); // back from another tab: warm again right away

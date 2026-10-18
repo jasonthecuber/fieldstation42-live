@@ -16,7 +16,7 @@ class _Channel:
     """One running source and the viewers sharing it."""
 
     def __init__(self, station):
-        self.name = station["network_name"]
+        self.name = station["network_name"] + (f" ({station['live_crop_to'] or 'letterbox'})" if station.get("_zoomed") else "")
         self.viewers = set()
         self.closed = False
         self.started = time.monotonic()
@@ -100,7 +100,8 @@ class _Channel:
 
 
 class ChannelHub:
-    """Shares one encode per channel among all of its viewers, started on demand."""
+    """Shares one encode per channel among all of its viewers, started on demand. A viewer who picked their own
+    zoom (`zoomed`) shares one with the others who picked the same."""
 
     def __init__(self):
         self._channels = {}
@@ -124,24 +125,32 @@ class ChannelHub:
         channel.hold(settings.get("surf_grace"))
 
     def _channel(self, station):
-        number = station["channel_number"]
-        channel = self._channels.get(number)
+        key = (station["channel_number"], station.get("live_crop_to"))
+        channel = self._channels.get(key)
         if channel is None or channel.closed:
-            channel = self._channels[number] = _Channel(station)
+            channel = self._channels[key] = _Channel(station)
         return channel
 
     def status(self):
-        """Running channels by number."""
-        return {n: c.status() for n, c in self._channels.items() if not c.closed}
+        """Running channels by number (with their viewers in zooms of their own counted in)."""
+        out = {}
+        for (number, _), c in sorted(self._channels.items(), key=lambda kv: kv[1].started):
+            if c.closed:
+                continue
+            if number in out:
+                out[number]["viewers"] += len(c.viewers)
+                out[number]["zooms"] = out[number].get("zooms", 0) + 1
+            else:
+                out[number] = c.status()
+        return out
 
     def restart(self, number):
-        """Stop a channel's encode; viewers reconnect and get a fresh one. False if it wasn't running."""
-        channel = self._channels.get(number)
-        if channel is None or channel.closed:
-            return False
-        _l.info(f"{channel.name}: restarted from the control panel")
-        channel.stop()
-        return True
+        """Stop a channel's encodes; viewers reconnect and get fresh ones. False if it wasn't running."""
+        running = [c for (n, _), c in self._channels.items() if n == number and not c.closed]
+        for channel in running:
+            _l.info(f"{channel.name}: restarted from the control panel")
+            channel.stop()
+        return bool(running)
 
 
 hub = ChannelHub()
