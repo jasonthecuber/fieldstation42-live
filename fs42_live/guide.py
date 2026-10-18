@@ -16,6 +16,9 @@ GUIDE_HISTORY = datetime.timedelta(hours=6)  # how far back the guide starts
 WEB_LISTINGS = datetime.timedelta(days=7)  # how far ahead web channels get listings
 HOUR = datetime.timedelta(hours=1)
 EPISODE = re.compile(r"\bS(\d+)E(\d+)(?:-?E\d+)*\b\s*(.*)", re.IGNORECASE)
+# release tags in a torrent's file name ("Diamonds.N.Dust.1080p.BluRay.x265-KONTRAST"), and all after them
+RELEASE_TAGS = re.compile(r"(?:^|[ ._-])(?:\d{3,4}p|blu-?ray|br-?rip|bd-?rip|web-?dl|web-?rip|hdtv|dvd-?rip|"
+                          r"x26[45]|[hx]\.26[45]|hevc|xvid|proper|repack|remux)\b.*", re.IGNORECASE)
 
 
 def streamable_stations():
@@ -34,7 +37,10 @@ def display_name(station):
 def episode(content_title):
     """(season, episode, name) from a title like "Miami Vice S01E23 Lombard", else None."""
     match = EPISODE.search(content_title or "")
-    return (int(match[1]), int(match[2]), match[3].strip()) if match else None
+    if not match:
+        return None
+    name = re.sub(r"[._]+", " ", RELEASE_TAGS.sub("", match[3])).strip(" -")
+    return int(match[1]), int(match[2]), name
 
 
 def m3u(base_url):
