@@ -2,6 +2,7 @@
 
 import copy
 import datetime
+import os
 import re
 from types import SimpleNamespace
 from xml.etree import ElementTree as ET
@@ -83,7 +84,8 @@ def xmltv():
 def _programme(tv, channel, block, station):
     prog = ET.SubElement(tv, "programme", start=_xmltv_time(block.start_time),
                          stop=_xmltv_time(block.end_time), channel=channel)
-    ET.SubElement(prog, "title").text = block_title(station, block) or "FieldStation42"
+    title = block_title(station, block)
+    ET.SubElement(prog, "title").text = title or "FieldStation42"
 
     content_title = getattr(block.content, "title", None)
     ep = episode(content_title)
@@ -93,14 +95,25 @@ def _programme(tv, channel, block, station):
             ET.SubElement(prog, "sub-title").text = name
         ET.SubElement(prog, "episode-num", system="onscreen").text = f"S{season:02}E{number:02}"
         ET.SubElement(prog, "episode-num", system="xmltv_ns").text = f"{season - 1}.{number - 1}."
-    elif content_title and content_title != block.title:
+    elif content_title and content_title != block.title and not (title and content_title.startswith(title)):
         ET.SubElement(prog, "sub-title").text = content_title
     ET.SubElement(prog, "previously-shown")
 
 
 def block_title(station, block):
-    # a clip show (music videos) is titled by its folder tag; `live_titles` names it for the guide
-    return station.get("live_titles", {}).get(block.title, block.title)
+    return show_title(station, block.title, getattr(block.content, "path", None))
+
+
+def show_title(station, title, path=None):
+    """FS42 titles a show from its file name. `live_title_from` titles it instead by its folder ("folder":
+    lost80s/Amanda's/Aunt Sonia.mp4), or by its whole file name less a date in brackets ("file": one-off
+    broadcasts). `live_titles` renames a title: a clip show (music videos) is titled by its folder tag."""
+    how = station.get("live_title_from")
+    if path and how == "folder":
+        title = os.path.basename(os.path.dirname(path))
+    elif path and how == "file":
+        title = re.sub(r"\s*\([^()]*\)$", "", os.path.splitext(os.path.basename(path))[0])
+    return station.get("live_titles", {}).get(title, title)
 
 
 def listing(station):
@@ -122,19 +135,20 @@ def fill_in_retro_guide():
 
     def get_all_blocks(start, end):
         by_station = upstream(start, end)
-        for blocks in by_station.values():
-            for block in blocks:
-                ep = episode(getattr(block.content, "title", None))
-                if ep and ep[2]:
-                    # upstream puts NFO metadata over this when there is some
-                    block.meta = {"type": "episode", "show_title": block.title, "title": ep[2]}
         for s in StationManager().stations:
-            if s.get("live_titles") and s["network_name"] in by_station:
+            if (s.get("live_titles") or s.get("live_title_from")) and s["network_name"] in by_station:
                 # copies: the scheduler reads a clip block's title as its tag
                 by_station[s["network_name"]] = [_retitled(b, block_title(s, b)) for b in by_station[s["network_name"]]]
             if s["network_type"] == "web" and not s.get("hidden"):
                 title = s.get("live_guide_listing") or listing(s)  # the guide shows the channel name beside it
                 by_station[s["network_name"]] = list(web_blocks(title, start, end))
+            for block in by_station.get(s["network_name"], []):
+                content_title = getattr(block.content, "title", None)
+                ep = episode(content_title)
+                name = ep[2] if ep else content_title if s.get("live_title_from") == "folder" else None
+                if name and name != block.title:
+                    # upstream puts NFO metadata over this when there is some
+                    block.meta = {"type": "episode", "show_title": block.title, "title": name}
         return by_station
 
     LiquidAPI.get_all_blocks = staticmethod(get_all_blocks)

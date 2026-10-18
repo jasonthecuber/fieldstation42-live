@@ -53,7 +53,7 @@ def now_showing(station):
     entry = pp.plan[before[-1] if before else features[0]]
     name = os.path.splitext(os.path.basename(entry.path))[0]
     return {"channel": station["channel_number"], "file": entry.path, "name": name,
-            "title": station.get("live_titles", {}).get(pp.block_title, pp.block_title) or name}
+            "title": guide.show_title(station, pp.block_title, entry.path) or name}
 
 
 def _natural(text):
