@@ -15,7 +15,7 @@ NOT_YET_STREAMABLE = {"guide", "streaming"}
 GUIDE_HISTORY = datetime.timedelta(hours=6)  # how far back the guide starts
 WEB_LISTINGS = datetime.timedelta(days=7)  # how far ahead web channels get listings
 HOUR = datetime.timedelta(hours=1)
-EPISODE = re.compile(r"\bS(\d+)E(\d+)(?:-?E\d+)*\b\s*(.*)", re.IGNORECASE)
+EPISODE = re.compile(r"\bS(\d+)E(\d+)(?:(?:-|,\s*)?E\d+)*\b\s*(.*)", re.IGNORECASE)  # S01E01E02, -E02, ", E02"
 # release tags in a torrent's file name ("Diamonds.N.Dust.1080p.BluRay.x265-KONTRAST"), and all after them
 RELEASE_TAGS = re.compile(r"(?:^|[ ._-])(?:\d{3,4}p|blu-?ray|br-?rip|bd-?rip|web-?dl|web-?rip|hdtv|dvd-?rip|"
                           r"x26[45]|[hx]\.26[45]|hevc|xvid|proper|repack|remux)\b.*", re.IGNORECASE)
@@ -41,6 +41,8 @@ def episode(content_title):
     if not match:
         return None
     name = re.sub(r"[._]+", " ", RELEASE_TAGS.sub("", match[3])).strip(" -")
+    if name.startswith("(") and name.endswith(")"):  # "Knight Rider S01E03 (Deadly Maneuvers)"
+        name = name[1:-1].strip()
     name = ROMAN.sub(lambda m: m[0].upper(), name)  # titles come title-cased: "Part Ii"
     return int(match[1]), int(match[2]), name
 
