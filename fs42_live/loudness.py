@@ -7,6 +7,7 @@ queued, so a bump or slate that isn't in any catalog gets measured the first tim
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ from fs42_live import settings
 _l = logging.getLogger("FS42LIVE")
 
 STORE = "runtime/loudness.json"  # realpath -> {"size": bytes, "lufs": measured or None}
+LEVELLED = "runtime/levelled_music"  # web page channels' music, each track turned to the target
 MOST_UP = 10.0  # dB; more would mostly raise hiss
 MOST_DOWN = -15.0
 SILENT = -50.0  # LUFS; quieter than this is a silent clip, left alone
@@ -76,10 +78,64 @@ def audio_filter(path):
     return chain + _levelled(lufs)
 
 
-def music_filter(tracks):
-    """The -af chain for a web page channel's background music. Its playlist is one input, so it gets one
-    gain, from its tracks' middle loudness (music is mastered alike, near enough); a track not measured yet
-    is queued. (Levelling it as it plays, with loudnorm, held up the screen capture: the page went choppy.)"""
+def music_playlist(tracks):
+    """A web page channel's background music, levelled: the tracks to play and the -af chain. Its playlist
+    is one input, so a filter can't turn each track by its own amount; each track gets a levelled copy made
+    once instead. Until they're all made, the tracks as they are with one gain for the lot. (Levelling as it
+    plays, with loudnorm, held up the screen capture: the page went choppy.)"""
+    copies = []
+    with _lock:
+        for track in tracks:
+            lufs = _measured(os.path.realpath(track))
+            copy = lufs is not False and _copy_path(track, lufs)
+            if not copy or not os.path.exists(copy):
+                break
+            copies.append(copy)
+    if len(copies) < len(tracks):
+        return tracks, _music_filter(tracks)
+    return copies, "aresample=async=1"
+
+
+def _copy_path(track, lufs):
+    """Where a track's levelled copy goes: named for the track and its gain, so a new loudness target
+    (or a changed track) makes a new copy."""
+    gain = 0.0 if lufs is None or lufs < SILENT else _gain(lufs)
+    path = os.path.realpath(track)
+    digest = hashlib.sha1(f"{path}:{os.path.getsize(path)}".encode()).hexdigest()[:12]
+    return os.path.join(LEVELLED, f"{digest}_{gain:+.1f}.m4a")
+
+
+def _make_copies(tracks):
+    """Makes the levelled copies a channel's music is missing, and drops copies no longer wanted."""
+    os.makedirs(LEVELLED, exist_ok=True)
+    wanted = set()
+    for track in tracks:
+        with _lock:
+            lufs = _measured(os.path.realpath(track))
+        if lufs is False:
+            continue
+        copy = _copy_path(track, lufs)
+        wanted.add(os.path.basename(copy))
+        if os.path.exists(copy):
+            continue
+        gain = _gain(lufs) if lufs is not None and lufs >= SILENT else 0.0
+        chain = f"volume={gain:.1f}dB" + (",alimiter=limit=0.89:level=false" if gain > 0 else "")
+        tmp = copy + ".tmp.m4a"
+        done = subprocess.run(
+            ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", track, "-vn",
+             "-af", chain, "-ar", "48000", "-ac", "2", "-c:a", "aac", "-b:a", "192k", tmp],
+            capture_output=True, text=True)
+        if done.returncode == 0:
+            os.replace(tmp, copy)
+            _l.info(f"loudness: levelled copy of {os.path.basename(track)} ({gain:+.1f} dB)")
+        else:
+            _l.warning(f"loudness: couldn't level {os.path.basename(track)}: {done.stderr.strip()[-200:]}")
+    return wanted
+
+
+def _music_filter(tracks):
+    """One gain for all of a channel's music, from its tracks' middle loudness; a track not measured yet
+    is queued."""
     chain, levels = "aresample=async=1", []
     with _lock:
         for track in tracks:
@@ -92,8 +148,12 @@ def music_filter(tracks):
     return chain + _levelled(sorted(levels)[len(levels) // 2]) if levels else chain
 
 
+def _gain(lufs):
+    return max(MOST_DOWN, min(MOST_UP, settings.get("loudness_target") - lufs))
+
+
 def _levelled(lufs):
-    gain = max(MOST_DOWN, min(MOST_UP, settings.get("loudness_target") - lufs))
+    gain = _gain(lufs)
     if abs(gain) < 0.5:
         return ""
     chain = f",volume={gain:.1f}dB"
@@ -116,7 +176,7 @@ def measure(path):
 def scan_new_files():
     """Measures every catalog file (shortest first, so the ads are done early) and anything
     queued by the encoder, skipping files already measured."""
-    paths = set()
+    paths, music = set(), set()
     for station in StationManager().stations:
         if station.get("_has_catalog"):
             for entry in sorted(CatalogAPI.get_entries(station), key=lambda e: e.duration):
@@ -125,7 +185,8 @@ def scan_new_files():
                     paths.add((entry.duration, path))
         elif station.get("network_type") == "web":
             from fs42_live.web_source import music_tracks  # (it imports this module)
-            paths |= {(0, os.path.realpath(t)) for t in music_tracks(station)}
+            music |= set(music_tracks(station))
+    paths |= {(0, os.path.realpath(t)) for t in music}
     with _lock:
         paths |= {(0, p) for p in _queued}
         _queued.clear()
@@ -145,6 +206,9 @@ def scan_new_files():
         with _lock:
             _save()
         _l.info(f"loudness: measured {done} files")
+    wanted = _make_copies(sorted(music))
+    for name in set(os.listdir(LEVELLED)) - wanted:
+        os.remove(os.path.join(LEVELLED, name))
 
 
 async def keep_measured():

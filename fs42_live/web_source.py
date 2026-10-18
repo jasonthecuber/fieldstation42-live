@@ -70,7 +70,7 @@ class WebPageSource:
                 "-video_size", f"{p.width}x{p.height}", "-i", self.display,
                 *audio_in,
                 "-map", "0:v", "-map", audio_map,
-                "-vf", p.video_filter(hw, messages.crawl_filter(self.station["channel_number"])), "-af", self._audio_filter(audio_map),
+                "-vf", p.video_filter(hw, messages.crawl_filter(self.station["channel_number"])), "-af", self._music_filter,
                 *p.encode_args(hw),
                 "-f", "mpegts", "pipe:1",
                 stdout=PIPE,
@@ -96,10 +96,13 @@ class WebPageSource:
             _l.info(f"{self.network}: stream stopped")
 
     def _audio_input(self, workdir):
+        self._music_filter = "aresample=async=1"
         tracks = self._music_tracks()
         if not tracks:
             p = self.profile
             return ["-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo"], "1:a"
+        # music is mastered much louder than TV: it's turned to the loudness the shows and ads play at
+        tracks, self._music_filter = loudness.music_playlist(tracks)
         playlist = os.path.join(workdir, "music.txt")
         with open(playlist, "w") as f:
             for _ in range(max(1, PLAYLIST_ENTRIES // len(tracks))):
@@ -108,12 +111,6 @@ class WebPageSource:
                     escaped = track.replace("'", "'\\''")
                     f.write(f"file '{escaped}'\n")
         return ["-re", "-f", "concat", "-safe", "0", "-i", playlist, "-shortest"], "1:a:0"
-
-    def _audio_filter(self, audio_map):
-        """Music is mastered much louder than TV: it's turned down to the loudness the shows and ads play at."""
-        if audio_map != "1:a:0":
-            return "aresample=async=1"
-        return loudness.music_filter(self._music_tracks())
 
     def _music_tracks(self):
         return music_tracks(self.station)
