@@ -52,8 +52,10 @@ def now_showing(station):
         return None
     entry = pp.plan[before[-1] if before else features[0]]
     name = os.path.splitext(os.path.basename(entry.path))[0]
-    return {"channel": station["channel_number"], "file": entry.path, "name": name,
-            "title": guide.show_title(station, pp.block_title, entry.path) or name}
+    title = guide.show_title(station, pp.block_title, entry.path) or name
+    ep = guide.episode(name)
+    episode = f"S{ep[0]:02}E{ep[1]:02} {ep[2]}".strip() if ep else name if name != title else ""
+    return {"channel": station["channel_number"], "file": entry.path, "name": name, "title": title, "episode": episode}
 
 
 def _natural(text):

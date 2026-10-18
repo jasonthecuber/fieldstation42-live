@@ -51,6 +51,11 @@
         #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
                 background: rgba(0,0,0,.45); font-size: clamp(16px, 3.2vh, 30px); }
         #menu[hidden], #menu [hidden] { display: none; }
+        /* what's on, floating above the menu */
+        #nowOn { position: fixed; top: 4%; left: 50%; transform: translateX(-50%); max-width: 90vw; box-sizing: border-box;
+                 text-align: center; background: rgba(0,0,0,.6); border: 2px solid #ccc; padding: .3em 1em; }
+        #nowOn b { display: block; color: #ff3; text-shadow: 2px 2px 0 #000; }
+        #nowOn small { display: block; font-size: .75em; color: #ddd; }
         #menu .panel { background: #1c2a8c; border: 4px solid #ccc; padding: 1em 1.4em; min-width: min(80vw, 16em);
                        max-width: 90vw; max-height: 86vh; overflow-y: auto; box-shadow: 8px 8px 0 #000; }
         #menu h2 { margin: 0 0 .6em; font-size: 1.2em; color: #ff3; text-shadow: 2px 2px 0 #000; }
@@ -85,6 +90,7 @@
     <button id="pause" hidden aria-label="Pause">&#10074;&#10074;</button>
     <div id="progress" hidden><span id="progressTime"></span><div><div></div></div></div>
     <div id="menu" hidden>
+        <div id="nowOn" hidden><b></b><small></small></div>
         <div class="panel" id="mainPanel">
             <h2>Menu</h2>
             <button data-key="1" data-go="channelPanel"><b>1</b>Channels</button>
@@ -698,10 +704,28 @@
             breaksButton.hidden = !od; // (watching on demand: switch the breaks on or off, carrying on from the same spot)
             breaksButton.innerHTML = `<b>4</b>Commercial breaks<small>${retroOn() ? "On" : "Off"}</small>`;
             showZoom();
+            showNowOn();
             menu.hidden = false;
             controls.classList.add("hidden");
             history.pushState({ menu: 1 }, "", location.hash); // so a browser's own Back closes the menu, not the page
             showPanel("mainPanel");
+        }
+        // the show on now and its episode, above the menu (on a web page channel, nothing)
+        async function showNowOn() {
+            const box = document.getElementById("nowOn"), opened = openedAt;
+            const fill = (title, episode) => {
+                box.children[0].textContent = title || "";
+                box.children[1].textContent = episode || "";
+                box.hidden = !title;
+            };
+            box.hidden = true;
+            if (od) return fill(od.title, od.episode || (od.label !== od.title ? od.label : ""));
+            try {
+                const r = await fetch(`/live/ondemand/now/${channels[current].channel}`);
+                if (!r.ok) return;
+                const now = await r.json();
+                if (opened === openedAt && menuOpen()) fill(now.title, now.episode);
+            } catch (e) {}
         }
         function closeMenu() {
             if (!menuOpen()) return;
