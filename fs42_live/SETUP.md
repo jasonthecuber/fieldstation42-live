@@ -127,6 +127,8 @@ That makes "Our Feature Presentation" (`intro/`), an ident going into the break 
 
 `break_strategy: end` plays each movie straight through with the break after it. `schedule_increment: 15` starts movies on the quarter hour, so breaks run up to 15 minutes; with 30 or 60 they'd be longer.
 
+Wide movies (2.39:1, say) letterboxed into the 4:3 picture come out small. `"live_crop_to": "16:9"` crops anything wider than 16:9 to it, as TV's pan and scan did, keeping thin bars; `"14:9"` crops more, and `"4:3"` fills the screen (losing almost half of a 2.39:1 picture's width). The crop is centred. Any station can have it; pictures narrower than the setting aren't touched. Restart the container after changing it.
+
 ## A Prevue-style guide channel
 
 Besides the TV Guide on ch 3, there's a guide in the style of the old Prevue channel: a live preview of each scheduled channel in turn up top, and the listings scrolling below. Add it as a web station:
