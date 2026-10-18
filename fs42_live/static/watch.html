@@ -91,7 +91,8 @@
             <button data-key="2" id="odButton"><b>2</b>Watch this from the start</button>
             <button data-key="3" data-go="odPanel" id="odBrowse"><b>3</b>On demand</button>
             <button data-key="4" id="breaksButton" hidden></button>
-            <button data-key="5" data-go="reportPanel"><b>5</b>Report a problem</button>
+            <button data-key="5" id="zoomButton" hidden></button>
+            <button data-key="6" data-go="reportPanel"><b>6</b>Report a problem</button>
             <button data-key="0" data-close><b>0</b>Close</button>
             <p id="mainMsg" class="note"></p>
             <p class="keys">Back or Info closes the menu</p>
@@ -310,6 +311,21 @@
             try { localStorage.setItem("fs42-retro", retroOn() ? "off" : "on"); } catch (e) {}
             if (od) startOd({ ...od, duration: od.length }, showTime(odPos()) + 5); // (a shuffle keeps its order)
         }
+        // on demand, how a wide movie fits the 4:3 picture, kept per device: the channel's own way (as live), or its
+        // sides cropped down to a shape (pan and scan). A change carries on from the same spot.
+        const ZOOMS = [["", "Normal"], ["letterbox", "Letterbox"], ["16:9", "16:9"], ["14:9", "14:9"], ["4:3", "Full screen"]];
+        const zoom = () => { try { return localStorage.getItem("fs42-zoom") || ""; } catch (e) { return ""; } };
+        function showZoom() {
+            const b = document.getElementById("zoomButton");
+            b.hidden = !od;
+            b.innerHTML = `<b>5</b>Zoom<small>${(ZOOMS.find(z => z[0] === zoom()) || ZOOMS[0])[1]}</small>`;
+        }
+        function nextZoom() {
+            const i = ZOOMS.findIndex(z => z[0] === zoom());
+            try { localStorage.setItem("fs42-zoom", ZOOMS[(i + 1) % ZOOMS.length][0]); } catch (e) {}
+            showZoom(); // (the menu stays open, so a few presses get to the one wanted)
+            if (od) { od.at = odPos(); playOd(); }
+        }
         // a music channel's videos shuffled, with breaks every few videos in retro mode
         const shuffleOf = c => ({ channel: c.channel, file: `shuffle:${c.channel}`, mix: true,
                                   name: `${c.display || c.name}, shuffled`, title: `${c.display || c.name}, shuffled` });
@@ -420,7 +436,7 @@
             snow.classList.remove("hidden");
             stopPlayer();
             player = mpegts.createPlayer({ type: "mpegts", isLive: true,
-                    url: `/live/ondemand/${od.channel}.ts?file=${encodeURIComponent(od.file)}&start=${od.at.toFixed(1)}${od.plan ? `&plan=${od.plan}` : ""}` },
+                    url: `/live/ondemand/${od.channel}.ts?file=${encodeURIComponent(od.file)}&start=${od.at.toFixed(1)}${od.plan ? `&plan=${od.plan}` : ""}${zoom() ? `&crop=${encodeURIComponent(zoom())}` : ""}` },
                 { enableStashBuffer: false, autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 30, autoCleanupMinBackwardDuration: 10 });
             player.attachMediaElement(video);
             player.load();
@@ -672,6 +688,7 @@
             const breaksButton = document.getElementById("breaksButton");
             breaksButton.hidden = !od; // (watching on demand: switch the breaks on or off, carrying on from the same spot)
             breaksButton.innerHTML = `<b>4</b>Commercial breaks<small>${retroOn() ? "On" : "Off"}</small>`;
+            showZoom();
             menu.hidden = false;
             controls.classList.add("hidden");
             history.pushState({ menu: 1 }, "", location.hash); // so a browser's own Back closes the menu, not the page
@@ -821,6 +838,7 @@
             else if (b.dataset.retro) pickFromStart(b.dataset.retro);
             else if (b.classList.contains("back")) menuBack();
             else if (b.id === "breaksButton") toggleBreaks();
+            else if (b.id === "zoomButton") nextZoom();
         });
         document.getElementById("menuButton").onclick = e => { e.stopPropagation(); openMenu(); };
 
