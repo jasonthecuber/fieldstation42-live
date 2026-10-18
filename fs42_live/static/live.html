@@ -46,7 +46,7 @@
                         <tbody id="reports"><tr><td colspan="4">Loading…</td></tr></tbody>
                     </table>
                     <h3>Messages</h3>
-                    <p>A crawl along the bottom of a channel, or the greeting on the greeting channel. Each one ends on its own.</p>
+                    <p>A crawl along the bottom of a channel, or the greeting on the greeting channel. Each one ends on its own, or stays on until you take it off.</p>
                     <form id="msgForm" class="pure-form pure-form-stacked">
                         <select id="msgWhere"></select>
                         <input id="msgText" maxlength="300" placeholder="Hi Doug!" autocomplete="off" class="pure-input-1">
@@ -54,6 +54,7 @@
                         <select id="msgMinutes">
                             <option value="15">for 15 minutes</option><option value="30" selected>for 30 minutes</option>
                             <option value="60">for an hour</option><option value="120">for 2 hours</option><option value="480">for 8 hours</option>
+                            <option value="0">until I take it off</option>
                         </select>
                         <button class="pure-button pure-button-primary">Put it on the air</button>
                         <span id="msgNote" class="muted"></span>
@@ -183,7 +184,7 @@
             cell.innerHTML = '<td></td><td></td><td></td><td><button class="pure-button">Take off</button></td>';
             cell.children[0].textContent = whereName(key);
             cell.children[1].textContent = m.text + (m.sub ? ` / ${m.sub}` : '');
-            cell.children[2].textContent = new Date(m.until * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+            cell.children[2].textContent = m.until === null ? 'You take it off' : new Date(m.until * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
             cell.querySelector('button').addEventListener('click', async () => { await sendMessage(key, '', '', 1); refresh(); });
             return cell;
         }

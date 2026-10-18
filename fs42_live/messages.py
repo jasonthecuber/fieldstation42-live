@@ -1,5 +1,6 @@
 """Messages put on the air for a while: a crawl along the bottom of a channel (or all of them),
-and the greeting on the greeting channel. Each one ends on its own after its minutes are up.
+and the greeting on the greeting channel. Each one ends on its own after its minutes are up, or with
+no minutes (0) stays on until it's taken off.
 
 Set from the live page, or `python -m fs42_live.tools.say` in the container. They're kept in
 runtime/messages.json, so a restart doesn't lose them.
@@ -28,7 +29,7 @@ def _load():
     except (FileNotFoundError, ValueError):
         return {}
     now = time.time()
-    return {k: m for k, m in saved.items() if m["until"] > now}
+    return {k: m for k, m in saved.items() if m["until"] is None or m["until"] > now}
 
 
 def _save(messages):
@@ -44,12 +45,12 @@ def current():
 
 
 def put(key, text, minutes=DEFAULT_MINUTES, **extra):
-    """Put a message on the air (key "crawl:<channel>", "crawl:all" or "greeting"), or take it off
-    with no text."""
+    """Put a message on the air (key "crawl:<channel>", "crawl:all" or "greeting") for its minutes, or
+    until it's taken off with no minutes; or take it off with no text."""
     with _lock:
         messages = _load()
         if text.strip():
-            messages[key] = {"text": text.strip()[:300], "until": time.time() + max(1, minutes) * 60, **extra}
+            messages[key] = {"text": text.strip()[:300], "until": time.time() + max(1, minutes) * 60 if minutes else None, **extra}
         else:
             messages.pop(key, None)
         _save(messages)
@@ -57,10 +58,10 @@ def put(key, text, minutes=DEFAULT_MINUTES, **extra):
 
 
 def crawl(channel):
-    """(text, seconds left) of the crawl for a channel (its own, else the one for all), or None."""
+    """(text, seconds left or None for no end) of the crawl for a channel (its own, else the one for all), or None."""
     messages = current()
     m = messages.get(f"crawl:{channel}") or messages.get("crawl:all")
-    return (m["text"], m["until"] - time.time()) if m else None
+    return (m["text"], m["until"] and m["until"] - time.time()) if m else None
 
 
 def crawl_filter(channel, offset=0.0):
@@ -77,9 +78,10 @@ def crawl_filter(channel, offset=0.0):
         with open(textfile, "w") as f:
             f.write(text + GAP)
     at = f"(t+{offset:.3f})"
+    until = f":enable='lt(t,{left:.1f})'" if left is not None else ""
     return (f"drawtext=fontfile={FONT}:textfile={textfile}:expansion=none:fontsize=30:fontcolor=yellow:"
             f"box=1:boxcolor=black@0.65:boxborderw=10:borderw=2:bordercolor=black:"
-            f"x='w-mod({at}*{SPEED},w+tw)':y=h-th-34:enable='lt(t,{left:.1f})'")
+            f"x='w-mod({at}*{SPEED},w+tw)':y=h-th-34{until}")
 
 
 def join(*filters):

@@ -265,11 +265,12 @@ async def get_messages():
 @router.post("/messages")
 async def put_message(request: Request):
     """{"kind": "crawl", "channel": 12 or "all", "text": "Hi Doug!", "minutes": 30}, or {"kind": "greeting",
-    "text": ..., "sub": ..., "minutes": ...} for the greeting channel. No text takes it off. Channels showing
+    "text": ..., "sub": ..., "minutes": ...} for the greeting channel. "minutes": 0 keeps it on until it's taken
+    off; no text takes it off. Channels showing
     a changed crawl restart, so it's on (or off) right away; their viewers reconnect in a moment."""
     body = await request.json()
     kind, text = body.get("kind"), str(body.get("text") or "")
-    minutes = float(body.get("minutes") or messages.DEFAULT_MINUTES)
+    minutes = float(messages.DEFAULT_MINUTES if body.get("minutes") is None else body["minutes"])
     if kind == "crawl":
         channel = str(body.get("channel") or "all")
         if channel != "all":
@@ -281,7 +282,7 @@ async def put_message(request: Request):
         saved = await asyncio.to_thread(messages.put, "greeting", text, minutes, sub=str(body.get("sub") or "")[:200])
     else:
         raise HTTPException(status_code=400, detail='kind is "crawl" or "greeting"')
-    _l.info(f"message {kind} {body.get('channel', '')}: {text[:80]!r} for {minutes:g} min" if text.strip()
+    _l.info(f"message {kind} {body.get('channel', '')}: {text[:80]!r} " + (f"for {minutes:g} min" if minutes else "until taken off") if text.strip()
             else f"message {kind} {body.get('channel', '')} cleared")
     return saved
 
