@@ -151,6 +151,14 @@ async def watch_manifest():
     return FileResponse(os.path.join(STATIC, "watch.webmanifest"), media_type="application/manifest+json")
 
 
+@router.get("/icon-{size}.png")
+async def icon(size: int):
+    """The player's icon (static/icon.svg, rendered), for a phone's home screen."""
+    if size not in (192, 512):
+        raise HTTPException(status_code=404)
+    return FileResponse(os.path.join(STATIC, f"icon-{size}.png"), headers={"Cache-Control": "max-age=86400"})
+
+
 @router.get("/ondemand/now/{channel}")
 async def ondemand_now(channel: int):
     """The show on a channel now, to watch from the start."""

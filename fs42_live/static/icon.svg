@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- a retro TV showing 42, the player's green channel number; kept inside the middle 80% for Android's round mask -->
+  <rect width="512" height="512" fill="#1c2a8c"/>
+  <g stroke="#ccc" stroke-width="10" stroke-linecap="round">
+    <line x1="256" y1="168" x2="196" y2="92"/>
+    <line x1="256" y1="168" x2="316" y2="92"/>
+  </g>
+  <rect x="104" y="160" width="304" height="224" rx="28" fill="#8a5a2b" stroke="#000" stroke-width="6"/>
+  <rect x="124" y="180" width="200" height="184" rx="30" fill="#111" stroke="#000" stroke-width="6"/>
+  <rect x="134" y="190" width="180" height="164" rx="24" fill="#0b1f0b"/>
+  <text x="224" y="300" text-anchor="middle" font-family="DejaVu Sans, Arial, sans-serif" font-weight="bold"
+        font-size="96" fill="#3f3" stroke="#000" stroke-width="4" paint-order="stroke">42</text>
+  <circle cx="366" cy="222" r="18" fill="#ddd" stroke="#000" stroke-width="5"/>
+  <circle cx="366" cy="276" r="18" fill="#ddd" stroke="#000" stroke-width="5"/>
+  <g stroke="#000" stroke-width="5">
+    <line x1="346" y1="320" x2="386" y2="320"/>
+    <line x1="346" y1="336" x2="386" y2="336"/>
+    <line x1="346" y1="352" x2="386" y2="352"/>
+  </g>
+  <g stroke="#000" stroke-width="12" stroke-linecap="round">
+    <line x1="150" y1="390" x2="140" y2="414"/>
+    <line x1="362" y1="390" x2="372" y2="414"/>
+  </g>
+</svg>
