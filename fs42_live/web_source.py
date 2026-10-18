@@ -9,7 +9,7 @@ import urllib.parse
 from asyncio.subprocess import DEVNULL, PIPE
 
 from fs42.station_manager import StationManager
-from fs42_live import hwaccel, messages, settings
+from fs42_live import hwaccel, loudness, messages, settings
 from fs42_live.profile import RETRO
 
 _l = logging.getLogger("FS42LIVE")
@@ -110,25 +110,13 @@ class WebPageSource:
         return ["-re", "-f", "concat", "-safe", "0", "-i", playlist, "-shortest"], "1:a:0"
 
     def _audio_filter(self, audio_map):
-        """Music is mastered much louder than TV: it's levelled as it plays (each track, near enough) to the
-        loudness the shows and ads are turned to."""
+        """Music is mastered much louder than TV: it's turned down to the loudness the shows and ads play at."""
         if audio_map != "1:a:0":
             return "aresample=async=1"
-        return (f"aresample=async=1,loudnorm=I={settings.get('loudness_target')}:TP=-2:LRA=11,"
-                f"aresample={self.profile.audio_rate}")  # (loudnorm works at 192 kHz)
+        return loudness.music_filter(self._music_tracks())
 
     def _music_tracks(self):
-        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.url).query)
-        folder = self.station.get("live_music") or (query.get("music") or [None])[0]
-        if not folder:
-            return []
-        folder = os.path.abspath(folder.lstrip("/"))  # relative to the FS42 folder, like the media API
-        try:
-            return [os.path.join(folder, f) for f in sorted(os.listdir(folder))
-                    if os.path.splitext(f)[1].lower() in AUDIO_EXTS]
-        except OSError as e:
-            _l.warning(f"{self.network}: no music ({e}); using silence")
-            return []
+        return music_tracks(self.station)
 
     @staticmethod
     def _full_url(url):
@@ -182,3 +170,19 @@ class WebPageSource:
             else:
                 self._tail.append(f"{tag}: {text}")
         await proc.wait()
+
+
+def music_tracks(station):
+    """A web page channel's background music: the folder named by its `live_music`, or by its page's `music`
+    URL parameter (as upstream's custom guide uses it). Empty if it has none."""
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(station.get("web_url", "")).query)
+    folder = station.get("live_music") or (query.get("music") or [None])[0]
+    if not folder:
+        return []
+    folder = os.path.abspath(folder.lstrip("/"))  # relative to the FS42 folder, like the media API
+    try:
+        return [os.path.join(folder, f) for f in sorted(os.listdir(folder))
+                if os.path.splitext(f)[1].lower() in AUDIO_EXTS]
+    except OSError as e:
+        _l.warning(f"{station['network_name']}: no music ({e}); using silence")
+        return []

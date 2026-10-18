@@ -73,10 +73,30 @@ def audio_filter(path):
             return chain
     if lufs is None or lufs < SILENT:
         return chain
+    return chain + _levelled(lufs)
+
+
+def music_filter(tracks):
+    """The -af chain for a web page channel's background music. Its playlist is one input, so it gets one
+    gain, from its tracks' middle loudness (music is mastered alike, near enough); a track not measured yet
+    is queued. (Levelling it as it plays, with loudnorm, held up the screen capture: the page went choppy.)"""
+    chain, levels = "aresample=async=1", []
+    with _lock:
+        for track in tracks:
+            path = os.path.realpath(track)
+            lufs = _measured(path)
+            if lufs is False:
+                _queued.add(path)
+            elif lufs is not None and lufs >= SILENT:
+                levels.append(lufs)
+    return chain + _levelled(sorted(levels)[len(levels) // 2]) if levels else chain
+
+
+def _levelled(lufs):
     gain = max(MOST_DOWN, min(MOST_UP, settings.get("loudness_target") - lufs))
     if abs(gain) < 0.5:
-        return chain
-    chain += f",volume={gain:.1f}dB"
+        return ""
+    chain = f",volume={gain:.1f}dB"
     if gain > 0:
         chain += ",alimiter=limit=0.89:level=false"  # peaks held under -1 dBFS
     return chain
@@ -103,6 +123,9 @@ def scan_new_files():
                 path = entry.realpath or os.path.realpath(entry.path)
                 if os.path.splitext(path)[1].lower() in AUDIO_EXTS:
                     paths.add((entry.duration, path))
+        elif station.get("network_type") == "web":
+            from fs42_live.web_source import music_tracks  # (it imports this module)
+            paths |= {(0, os.path.realpath(t)) for t in music_tracks(station)}
     with _lock:
         paths |= {(0, p) for p in _queued}
         _queued.clear()
