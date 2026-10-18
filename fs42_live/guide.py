@@ -95,7 +95,7 @@ def _programme(tv, channel, block, station):
             ET.SubElement(prog, "sub-title").text = name
         ET.SubElement(prog, "episode-num", system="onscreen").text = f"S{season:02}E{number:02}"
         ET.SubElement(prog, "episode-num", system="xmltv_ns").text = f"{season - 1}.{number - 1}."
-    elif content_title and content_title != block.title and not (title and content_title.startswith(title)):
+    elif content_title and content_title != title and not (title and content_title.startswith(title)):
         ET.SubElement(prog, "sub-title").text = content_title
     ET.SubElement(prog, "previously-shown")
 
