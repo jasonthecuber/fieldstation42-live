@@ -19,6 +19,7 @@ EPISODE = re.compile(r"\bS(\d+)E(\d+)(?:-?E\d+)*\b\s*(.*)", re.IGNORECASE)
 # release tags in a torrent's file name ("Diamonds.N.Dust.1080p.BluRay.x265-KONTRAST"), and all after them
 RELEASE_TAGS = re.compile(r"(?:^|[ ._-])(?:\d{3,4}p|blu-?ray|br-?rip|bd-?rip|web-?dl|web-?rip|hdtv|dvd-?rip|"
                           r"x26[45]|[hx]\.26[45]|hevc|xvid|proper|repack|remux)\b.*", re.IGNORECASE)
+ROMAN = re.compile(r"\b(?:Ii|Iii|Iv|Vi|Vii|Viii|Ix|Xi|Xii)\b")
 
 
 def streamable_stations():
@@ -40,6 +41,7 @@ def episode(content_title):
     if not match:
         return None
     name = re.sub(r"[._]+", " ", RELEASE_TAGS.sub("", match[3])).strip(" -")
+    name = ROMAN.sub(lambda m: m[0].upper(), name)  # titles come title-cased: "Part Ii"
     return int(match[1]), int(match[2]), name
 
 
