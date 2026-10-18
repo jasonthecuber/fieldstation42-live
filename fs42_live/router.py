@@ -105,6 +105,7 @@ async def status():
         entry = {"channel": n, "name": s["network_name"], "display": guide.display_name(s), "type": s["network_type"],
                  "running": n in running, **running.get(n, {})}
         if s["network_type"] != "web":
+            entry["crop"] = s.get("live_crop_to")
             try:
                 entry["schedule_ends"] = LiquidManager().get_extents(s["network_name"])[1]
             except ValueError:

@@ -314,17 +314,24 @@
         // how a wide movie fits the 4:3 picture, kept per device: the channel's own way, or letterboxed, or its sides
         // cropped down to a shape (pan and scan). Live, a zoom of its own is a second encode of the channel, shared
         // with anyone else who picked it; on demand, a change carries on from the same spot.
-        const ZOOMS = [["", "Normal"], ["letterbox", "Letterbox"], ["16:9", "16:9"], ["14:9", "14:9"], ["4:3", "Full screen"]];
+        const ZOOMS = [["letterbox", "Letterbox"], ["16:9", "16:9"], ["14:9", "14:9"], ["4:3", "Full screen"]];
         const zoom = () => { try { return localStorage.getItem("fs42-zoom") || ""; } catch (e) { return ""; } };
         const zoomArg = () => zoom() ? `&crop=${encodeURIComponent(zoom())}` : "";
+        function zoomChoices() {
+            // the channel's own setting first, named, then the others (its own isn't listed twice)
+            const n = od ? od.channel : channels[current] && channels[current].channel;
+            const own = (channels.find(c => c.channel == n) || {}).crop || "letterbox";
+            const name = (ZOOMS.find(z => z[0] === own) || [own, own])[1];
+            return [["", `Channel setting (${name})`], ...ZOOMS.filter(z => z[0] !== own)];
+        }
         function showZoom() {
-            const b = document.getElementById("zoomButton");
+            const b = document.getElementById("zoomButton"), choices = zoomChoices();
             b.hidden = !raw; // (old iPhones play HLS, which has no zoom)
-            b.innerHTML = `<b>5</b>Zoom<small>${(ZOOMS.find(z => z[0] === zoom()) || ZOOMS[0])[1]}</small>`;
+            b.innerHTML = `<b>5</b>Zoom<small>${(choices.find(z => z[0] === zoom()) || choices[0])[1]}</small>`;
         }
         function nextZoom() {
-            const i = ZOOMS.findIndex(z => z[0] === zoom());
-            try { localStorage.setItem("fs42-zoom", ZOOMS[(i + 1) % ZOOMS.length][0]); } catch (e) {}
+            const choices = zoomChoices(), i = Math.max(0, choices.findIndex(z => z[0] === zoom()));
+            try { localStorage.setItem("fs42-zoom", choices[(i + 1) % choices.length][0]); } catch (e) {}
             showZoom(); // (the menu stays open, so a few presses get to the one wanted)
             if (od) { od.at = odPos(); playOd(); } else tune(current);
         }
