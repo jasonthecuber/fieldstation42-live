@@ -102,7 +102,7 @@ def _copy_path(track, lufs):
     gain = 0.0 if lufs is None or lufs < SILENT else _gain(lufs)
     path = os.path.realpath(track)
     digest = hashlib.sha1(f"{path}:{os.path.getsize(path)}".encode()).hexdigest()[:12]
-    return os.path.join(LEVELLED, f"{digest}_{gain:+.1f}.m4a")
+    return os.path.join(os.path.abspath(LEVELLED), f"{digest}_{gain:+.1f}.m4a")  # (a playlist's relative paths are from its own folder)
 
 
 def _make_copies(tracks):
