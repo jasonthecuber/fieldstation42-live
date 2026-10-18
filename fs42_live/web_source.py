@@ -70,7 +70,7 @@ class WebPageSource:
                 "-video_size", f"{p.width}x{p.height}", "-i", self.display,
                 *audio_in,
                 "-map", "0:v", "-map", audio_map,
-                "-vf", p.video_filter(hw, messages.crawl_filter(self.station["channel_number"])), "-af", "aresample=async=1",
+                "-vf", p.video_filter(hw, messages.crawl_filter(self.station["channel_number"])), "-af", self._audio_filter(audio_map),
                 *p.encode_args(hw),
                 "-f", "mpegts", "pipe:1",
                 stdout=PIPE,
@@ -108,6 +108,14 @@ class WebPageSource:
                     escaped = track.replace("'", "'\\''")
                     f.write(f"file '{escaped}'\n")
         return ["-re", "-f", "concat", "-safe", "0", "-i", playlist, "-shortest"], "1:a:0"
+
+    def _audio_filter(self, audio_map):
+        """Music is mastered much louder than TV: it's levelled as it plays (each track, near enough) to the
+        loudness the shows and ads are turned to."""
+        if audio_map != "1:a:0":
+            return "aresample=async=1"
+        return (f"aresample=async=1,loudnorm=I={settings.get('loudness_target')}:TP=-2:LRA=11,"
+                f"aresample={self.profile.audio_rate}")  # (loudnorm works at 192 kHz)
 
     def _music_tracks(self):
         query = urllib.parse.parse_qs(urllib.parse.urlparse(self.url).query)
