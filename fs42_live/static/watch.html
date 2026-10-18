@@ -229,6 +229,15 @@
                     logEvent("error", `${type} ${detail} ${info && info.msg ? info.msg : ""}`);
                     retune();
                 });
+                // a live channel's stream only ends when the server restarts the channel (a crawl put on or
+                // taken off, say): tune it again right away, rather than sit on the last frame
+                const mine = player;
+                player.on(mpegts.Events.LOADING_COMPLETE, () => {
+                    if (player !== mine || od) return;
+                    logEvent("stream ended; tuning again");
+                    clearTimeout(retry);
+                    retry = setTimeout(() => tune(current), 500);
+                });
             } else {
                 video.src = `/live/hls/${ch.channel}/index.m3u8`;
             }
