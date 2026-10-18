@@ -134,7 +134,7 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   keeps thin bars.
 - **Even out loudness per file.** **Done 2026-10-16** (fs42_live/loudness.py, `loudness_target` -24). The movies
   range from -19 to -29 LUFS (See No Evil is the quiet one); the ads are -22. Measure each
-  file once, like the act-break scan, and apply a gain. Web channels (guide music) aren't levelled yet.
+  file once, like the act-break scan, and apply a gain. Web channels' music: each track gets a levelled copy (2026-10-17).
 - **Shared '80s commercials:** move them out of `catalog/miami_vice/commercial/` into a shared
   folder (e.g. `catalog/_shared/commercials_80s`) and link it into each '80s channel, once a
   second channel needs them.
