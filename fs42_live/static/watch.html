@@ -25,6 +25,19 @@
         #start { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
                  background: #000; font-size: 28px; cursor: pointer; border: 0; color: #fff; width: 100%; font-family: inherit; }
         #start[hidden] { display: none; }
+        /* on a phone, how to put the player on its home screen, over the start screen */
+        #installLink { position: fixed; top: 4%; left: 50%; transform: translateX(-50%); background: none; border: 0;
+                       color: #ccc; font: inherit; font-size: 16px; text-decoration: underline; cursor: pointer; }
+        #installLink[hidden], #start[hidden] ~ #installLink, #installHelp[hidden] { display: none; }
+        #installHelp { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+                       background: rgba(0,0,0,.7); font-size: 16px; }
+        #installHelp .panel { background: #1c2a8c; border: 4px solid #ccc; padding: 1em 1.4em; max-width: min(90vw, 26em);
+                              box-sizing: border-box; color: #fff; }
+        #installHelp h2 { margin: 0 0 .6em; font-size: 1.2em; color: #ff3; text-shadow: 2px 2px 0 #000; }
+        #installHelp ol { padding-left: 1.3em; margin: 0 0 1em; }
+        #installHelp li { margin: .4em 0; }
+        #installHelp code { color: #ff3; user-select: all; word-break: break-all; }
+        #installHelp button { font: inherit; padding: .35em 1.2em; background: transparent; color: #fff; border: 2px solid #ccc; }
         #controls { position: fixed; bottom: 4%; right: 4%; display: flex; flex-direction: column; gap: 12px;
                     transition: opacity .4s; }
         #controls.hidden { opacity: 0; pointer-events: none; }
@@ -140,6 +153,14 @@
         </div>
     </div>
     <button id="start">&#9654; Tap to turn on</button>
+    <button id="installLink" hidden>Put it on your phone's home screen</button>
+    <div id="installHelp" hidden>
+        <div class="panel">
+            <h2>On your home screen</h2>
+            <ol id="installSteps"></ol>
+            <button id="installClose">Got it</button>
+        </div>
+    </div>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.js"></script>
     <script>
         const video = document.getElementById("tv");
@@ -912,6 +933,26 @@
             e.preventDefault();
             return true;
         }
+
+        // phones only (an Android TV's browser doesn't say Mobile), and not once it's on the home screen
+        (function installHelp() {
+            const ua = navigator.userAgent, iphone = /iPhone|iPad/.test(ua);
+            const installed = matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches || navigator.standalone;
+            if (installed || !(iphone || /Android.*Mobile/.test(ua))) return;
+            const link = document.getElementById("installLink"), help = document.getElementById("installHelp");
+            const steps = iphone ? ["In Safari, tap Share (the square with the arrow).", "Tap <b>Add to Home Screen</b>, then Add."]
+                : [...(location.protocol === "https:" ? [] : [ // (Chrome installs an app only from a secure site; this vouches for it)
+                    "In Chrome, go to <code>chrome://flags</code>",
+                    "Search for <b>Insecure origins treated as secure</b>, set it to Enabled, and type in "
+                    + `<code>${location.origin}</code>`,
+                    "Tap <b>Relaunch</b>, and come back to this page."]),
+                   "Tap Chrome's &#8942; menu, then <b>Install app</b> (or Add to Home screen).",
+                   "If an old shortcut with a Chrome badge is on your home screen, remove it."];
+            document.getElementById("installSteps").innerHTML = steps.map(s => `<li>${s}</li>`).join("");
+            link.hidden = false;
+            link.onclick = () => { help.hidden = false; };
+            document.getElementById("installClose").onclick = () => { help.hidden = true; };
+        })();
 
         start.onclick = async () => {
             // phones and TVs (no mouse) go full screen when turned on; a PC stays in its window
