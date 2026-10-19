@@ -154,6 +154,16 @@ docker restart fs42-live
 
 The guide lists it as "Classic Cartoons - Coming Soon". When the real channel is ready, delete `coming_soon_classic_cartoons.json` and add the station.
 
+## Holiday seasons
+
+To mix holiday ads and specials into the regular channels for a few weeks, describe each season in `~/fs42-data/seasons.json`. This is what's in force, which ads and specials it adds, and which hours of which channels play the specials. The format is at the top of `tools/seasons.py`. Then run it daily from the host's crontab (`crontab -e`):
+
+```sh
+0 10 * * * python3 ~/fieldstation42-live/fs42_live/tools/seasons.py >> ~/fs42-data/seasons.log 2>&1
+```
+
+On days a season starts or ends, it links the season's files into the catalogs, swaps the hours into the channels' day templates (or back), rebuilds the channels involved and restarts fs42-live; on other days it does nothing. Run it with `--dry --date 2026-10-31` to see what it would do on a given day.
+
 ## Updating
 
 ```sh
