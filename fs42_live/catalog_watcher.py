@@ -6,6 +6,7 @@ refers to entries by ID) has to be deleted too. This scans the folder the same w
 only inserts new entries and deletes missing ones, so the built schedule keeps working:
 sequences keep their place and take in new episodes, and new media shows up as the schedule
 keeper adds time. Only when files have gone is the schedule rebuilt, since it may use them.
+New entries start at their tag's lowest play count, so they join the rotation evenly.
 """
 
 import json
@@ -96,7 +97,14 @@ class MergingCatalog(ShowCatalog):
                         scanned[(entry.tag, entry.path)] = entry
         stored = {(e.tag, e.path): e for e in CatalogAPI.get_entries(self.config)}
         name = self.config["network_name"]
-        CatalogIO().put_catalog_entries(name, [e for key, e in scanned.items() if key not in stored])
+        new = [e for key, e in scanned.items() if key not in stored]
+        # the scheduler plays the least-played first, so new files at 0 would crowd out their tag until caught up
+        lowest = {}
+        for (tag, _), e in stored.items():
+            lowest[tag] = min(lowest.get(tag, e.count), e.count)
+        for e in new:
+            e.count = lowest.get(e.tag, 0)
+        CatalogIO().put_catalog_entries(name, new)
         with CatalogIO()._get_connection() as db:
             for key in stored.keys() - scanned.keys():
                 db.execute("DELETE FROM catalog_entries WHERE id = ?", (stored[key].dbid,))
