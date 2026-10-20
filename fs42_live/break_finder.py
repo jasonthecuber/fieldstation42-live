@@ -3,8 +3,10 @@
 Upstream already cuts an episode at stored break points (the fluid DB's `break_points`, read
 by LiquidBlock.make_plan), and `station_42.py --break_detect_dir` fills them in. But that
 takes every black frame as a break, and dark night scenes are full of them. Here a break must
-be black and quiet at once, the way a show faded out for the commercials. Episodes with too
-few of those (some run the music straight through) keep upstream's evenly spaced breaks.
+be black and quiet at once, the way a show faded out for the commercials. A half-hour often
+has just one mid-show break plus fades after the cold open and before the tag, so breaks may
+sit near either end. Episodes with too few (some run the music straight through, and rips with
+the ads cut out have none) keep upstream's evenly spaced breaks.
 """
 
 import datetime
@@ -29,8 +31,10 @@ SHORTEST_EPISODE = 600  # seconds; shorter clips are left alone
 BLACK = 0.5  # seconds of black at a break...
 SILENT = 0.3  # ...of which this much is also quiet
 SILENCE_DB = -40  # dB; fades often stop short of true silence
-SHORTEST_ACT = 180  # seconds; also how close to the start or end a break may be
-FEWEST_BREAKS = 3  # fewer found isn't a pattern to trust
+SHORTEST_ACT = 180  # seconds between breaks
+EDGE = 20  # seconds; how close to the start or end a break may be (after a cold open, before the tag)
+FEWEST_BREAKS = 3  # fewer found isn't a pattern to trust...
+LONGEST_ACT = 960  # ...unless they leave no act longer than this
 PENDING = "runtime/break_finder_rebuild.json"  # stations whose schedules still need the new breaks
 
 
@@ -101,7 +105,7 @@ def find_breaks(path, duration):
             if hi - lo >= SILENT:
                 points.append((lo + hi) / 2)
                 break
-    points = [p for p in points if SHORTEST_ACT <= p <= duration - SHORTEST_ACT]
+    points = [p for p in points if EDGE <= p <= duration - EDGE]
 
     # a teaser, then the titles a minute later, are both fades; keep the later one
     while len(points) > 1:
@@ -111,7 +115,9 @@ def find_breaks(path, duration):
         if lengths[shortest] >= SHORTEST_ACT:
             break
         del points[shortest - 1]
-    return points if len(points) >= FEWEST_BREAKS else []
+    edges = [0.0, *points, duration]
+    longest = max(edges[i + 1] - edges[i] for i in range(len(edges) - 1))
+    return points if len(points) >= FEWEST_BREAKS or (points and longest <= LONGEST_ACT) else []
 
 
 def as_segments(points, duration):
