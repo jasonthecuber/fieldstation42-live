@@ -18,6 +18,8 @@ DEFAULTS = {
     "page_load": 0.5,
     # the loudness every file is turned up or down to (LUFS); US TV aims at -24
     "loudness_target": -24,
+    # where Jellyfin is, to tell it when the guide changes (from inside the container: the host's port)
+    "jellyfin_url": "http://host.docker.internal:8096",
 }
 
 

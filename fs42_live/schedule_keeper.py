@@ -18,6 +18,7 @@ from fs42.liquid_schedule import LiquidSchedule
 from fs42.station_manager import StationManager
 from fs42_live.break_finder import rebuilt, scan_new_episodes
 from fs42_live.catalog_watcher import refresh_changed_catalogs
+from fs42_live import jellyfin_guide
 
 _l = logging.getLogger("FS42LIVE")
 
@@ -143,3 +144,4 @@ def reload_without_gap(liquid):
         for station in liquid.station_configs
         if station["network_type"] not in ("guide", "streaming")
     }
+    jellyfin_guide.refresh_soon()

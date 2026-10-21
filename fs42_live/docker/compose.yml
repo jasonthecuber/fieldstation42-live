@@ -26,6 +26,11 @@ services:
       - ${FS42_DATA}/runtime:/app/runtime
       # Catalogs store absolute paths, so media is mounted at the same path as on the host
       - ${MEDIA_ROOT:?set in .env}:${MEDIA_ROOT}:ro
+      # a Jellyfin API key, so a schedule change refreshes Jellyfin's guide (none: it doesn't)
+      - ${JELLYFIN_KEY_FILE:-/dev/null}:/run/secrets/jellyfin_key:ro
+    # Jellyfin, reached through the host's port
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
   # WeatherStar 4000+ for the weather channel; fs42-live renders it at http://ws4kp:8080

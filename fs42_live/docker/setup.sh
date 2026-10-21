@@ -59,6 +59,8 @@ VIDEO_GID=${video_gid:-44}
 TZ=$TZ
 FS42_PORT=$FS42_PORT
 EOF
+    # a Jellyfin API key left by the media box installer: refresh Jellyfin's guide on schedule changes
+    [ -f "$HOME/.config/jellyfin-rescan.key" ] && echo "JELLYFIN_KEY_FILE=$HOME/.config/jellyfin-rescan.key" >> .env
     echo "Wrote $(pwd)/.env"
 fi
 
