@@ -1017,7 +1017,7 @@
             box.style.cssText = "position:fixed;top:0;left:0;margin:0;padding:4px 8px;font:14px monospace;color:#3f3;"
                 + "background:rgba(0,0,0,.7);z-index:99;pointer-events:none;max-width:60vw;white-space:pre-wrap";
             document.body.append(box);
-            const lines = [], el = n => n ? (n.id || n.tagName.toLowerCase()) + (n.textContent ? ` "${n.textContent.trim().slice(0, 12)}"` : "") : "-";
+            const lines = [], el = n => n ? (n.id || n.tagName.toLowerCase()) + (n.tagName === "BUTTON" ? ` "${n.textContent.trim().slice(0, 12)}"` : "") : "-";
             const state = () => `focus=${el(document.activeElement)} menu=${menuOpen() ? shown().id : "-"} controls=${controls.classList.contains("hidden") ? "hidden" : "up"}`;
             function log(line) {
                 lines.push(line); if (lines.length > 8) lines.shift();
