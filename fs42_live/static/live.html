@@ -19,6 +19,26 @@
         .live dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4em 1em; }
         .live dt { font-weight: bold; }
         .live dd { margin: 0; }
+        .live h2 { margin-top: 1.2em; }
+        .live h2:first-child { margin-top: 0; }
+
+        /* Phones: each table row is a small card. The theme stacks every cell
+           on its own line; here the first cells share a line and the rest are
+           labelled lines under them. */
+        @media (max-width: 600px) {
+            .live { padding: 0.5em 0; }
+            .live .pure-table tr { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline;
+                                   gap: 0.3em 0.75em; padding: 0.7em 0.85em; margin-bottom: 0.6em; }
+            .live .pure-table td { padding: 0; border: none; }
+            .live .pure-table td:empty { display: none; }
+            .live .pure-table td:before { display: inline; font-size: 0.8em; margin: 0 0.5em 0 0; }
+            .live .pure-table td.wide, .live .pure-table td[colspan] { grid-column: 1 / -1; }
+            .live .pure-table td.ch { font-weight: bold; }
+            .live .pure-table button { width: 100%; margin-top: 0.3em; }
+            .live .pure-form select, .live .pure-form input, .live .pure-form button { width: 100%; font-size: 16px; }
+            .live dl { display: block; }
+            .live dd { margin: 0.2em 0 0.8em; }
+        }
     </style>
 </head>
 
@@ -33,19 +53,7 @@
             const base = location.origin;
             const content = `
                 <div class="pure-u-1 live">
-                    <h2>Live channels</h2>
-                    <p>Each channel streams only while someone is watching, and stops about 30 seconds after the last viewer leaves.</p>
-                    <table class="pure-table pure-table-horizontal">
-                        <thead><tr><th>Ch</th><th>Name</th><th>Status</th><th>Viewers</th><th>Running</th><th>Schedule built to</th><th></th></tr></thead>
-                        <tbody id="channels"><tr><td colspan="7">Loading…</td></tr></tbody>
-                    </table>
-                    <h3>Problem reports</h3>
-                    <p>Sent from the player's menu (Info on a TV remote, or ☰), with what played in the half minute before.</p>
-                    <table class="pure-table pure-table-horizontal">
-                        <thead><tr><th>Seen</th><th>Ch</th><th>Problem</th><th>Playing then</th></tr></thead>
-                        <tbody id="reports"><tr><td colspan="4">Loading…</td></tr></tbody>
-                    </table>
-                    <h3>Messages</h3>
+                    <h2>Messages</h2>
                     <p>A crawl along the bottom of a channel, or the greeting on the greeting channel. Each one ends on its own, or stays on until you take it off.</p>
                     <form id="msgForm" class="pure-form pure-form-stacked">
                         <select id="msgWhere"></select>
@@ -62,6 +70,18 @@
                     <table class="pure-table pure-table-horizontal">
                         <thead><tr><th>Where</th><th>Message</th><th>Until</th><th></th></tr></thead>
                         <tbody id="messages"><tr><td colspan="4">Loading…</td></tr></tbody>
+                    </table>
+                    <h2>Channels</h2>
+                    <p>Each channel streams only while someone is watching, and stops about 30 seconds after the last viewer leaves.</p>
+                    <table class="pure-table pure-table-horizontal">
+                        <thead><tr><th>Ch</th><th>Name</th><th>Status</th><th>Viewers</th><th>Running</th><th>Schedule built to</th><th></th></tr></thead>
+                        <tbody id="channels"><tr><td colspan="7">Loading…</td></tr></tbody>
+                    </table>
+                    <h3>Problem reports</h3>
+                    <p>Sent from the player's menu (Info on a TV remote, or ☰), with what played in the half minute before.</p>
+                    <table class="pure-table pure-table-horizontal">
+                        <thead><tr><th>Seen</th><th>Ch</th><th>Problem</th><th>Playing then</th></tr></thead>
+                        <tbody id="reports"><tr><td colspan="4">Loading…</td></tr></tbody>
                     </table>
                     <h3>Jellyfin setup</h3>
                     <dl>
@@ -103,13 +123,13 @@
                 : 'stopping soon';
             const cell = document.createElement('tr');
             cell.innerHTML = `
-                <td>${c.channel}</td>
+                <td class="ch">${c.channel}</td>
                 <td></td>
                 <td>${status}</td>
-                <td>${c.running ? c.viewers : ''}</td>
-                <td>${c.running ? duration(c.uptime) + ` <span class="muted">(${c.kbps} kbps)</span>` : ''}</td>
-                <td>${scheduleEnd(c)}</td>
-                <td>${c.running ? `<button class="pure-button" data-ch="${c.channel}">Restart</button>` : ''}</td>`;
+                <td class="wide" data-label="Viewers">${c.running ? c.viewers : ''}</td>
+                <td class="wide" data-label="Running">${c.running ? duration(c.uptime) + ` <span class="muted">(${c.kbps} kbps)</span>` : ''}</td>
+                <td class="wide" data-label="${c.type === 'web' ? '' : 'Schedule to'}">${scheduleEnd(c)}</td>
+                <td class="wide">${c.running ? `<button class="pure-button" data-ch="${c.channel}">Restart</button>` : ''}</td>`;
             cell.children[1].textContent = c.name;
             const button = cell.querySelector('button');
             if (button) button.addEventListener('click', () => restart(c));
@@ -181,7 +201,7 @@
 
         function messageRow(key, m) {
             const cell = document.createElement('tr');
-            cell.innerHTML = '<td></td><td></td><td></td><td><button class="pure-button">Take off</button></td>';
+            cell.innerHTML = '<td class="muted"></td><td></td><td class="muted"></td><td class="wide"><button class="pure-button">Take off</button></td>';
             cell.children[0].textContent = whereName(key);
             cell.children[1].textContent = m.text + (m.sub ? ` / ${m.sub}` : '');
             cell.children[2].textContent = m.until === null ? 'You take it off' : new Date(m.until * 1000).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -209,7 +229,7 @@
 
         function reportRow(r) {
             const cell = document.createElement('tr');
-            cell.innerHTML = '<td></td><td></td><td></td><td></td>';
+            cell.innerHTML = '<td class="muted"></td><td></td><td class="wide"></td><td class="wide muted"></td>';
             const [seen, ch, problem, played] = cell.children;
             seen.textContent = new Date(r.seen).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit' });
             ch.textContent = `${r.channel} ${r.network}`;
