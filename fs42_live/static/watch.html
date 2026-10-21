@@ -47,6 +47,7 @@
         body.idle.alt, body.idle.alt * { cursor: url(data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7) 0 0, none !important; }
         #controls button { width: 64px; height: 64px; border-radius: 50%; border: 2px solid #888;
                            background: rgba(0,0,0,.5); color: #fff; font-size: 28px; cursor: pointer; }
+        #controls button:focus { outline: none; border-color: #ff3; box-shadow: 0 0 0 3px #ff3; }
         /* on demand: a pause button in the middle and a progress line, shown with the controls (and while paused) */
         #still { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
         #pause { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 96px; height: 96px;
@@ -181,7 +182,15 @@
             osd.classList.remove("hidden");
             controls.classList.remove("hidden");
             clearTimeout(osdTimer);
-            osdTimer = setTimeout(() => { osd.classList.add("hidden"); controls.classList.add("hidden"); }, 3000);
+            osdTimer = setTimeout(hideOsd, inControls() ? CONTROLS_SECONDS * 1000 : 3000);
+        }
+        // the remote can step through the buttons on the right: they stay up while one is picked, then let go
+        const CONTROLS_SECONDS = 8;
+        const inControls = () => controls.contains(document.activeElement);
+        function hideOsd() {
+            osd.classList.add("hidden");
+            controls.classList.add("hidden");
+            if (inControls()) document.activeElement.blur();
         }
 
         // retries after a dropped or stuck stream wait longer each time (2, 4, 8, 16, then 30 s), since each
@@ -649,6 +658,7 @@
 
         document.addEventListener("keydown", e => {
             if (!channels.length || menuKeys(e)) return;
+            if (controlsKeys(e)) { e.preventDefault(); return; }
             if (od && odKeys(e)) { e.preventDefault(); return; }
             const k = e.key;
             // TV remotes: the d-pad sends arrows; channel buttons, where a remote has them, send ChannelUp/Down.
@@ -714,7 +724,9 @@
         const odButton = document.getElementById("odButton");
         const menuOpen = () => !menu.hidden;
         const shown = () => panels.find(p => !p.hidden);
-        const focusable = () => [...shown().querySelectorAll("button:not(.back), input")];
+        // in order down the panel, Back (at the top) included; a panel opens on its first choice, not on Back
+        const focusable = () => [...shown().querySelectorAll("button, input")].filter(b => !b.hidden);
+        const firstChoice = () => focusable().find(b => !b.classList.contains("back"));
 
         function openMenu() {
             if (!channels.length) return;
@@ -768,7 +780,7 @@
             if (id === "startPanel") return startChoices();
             if (id === "odPanel") return od ? goOd([od.channel, ...(od.group !== undefined ? [od.group] : [])], od.file) : goOd([]);
             const first = id === "channelPanel" ? shown().querySelector(`[data-ch="${channels[current].channel}"]`) : null;
-            (first || focusable()[0]).focus();
+            (first || firstChoice()).focus();
         }
 
         // on demand, browsing: the channels with something to watch (and what this device was last watching),
@@ -903,6 +915,28 @@
             else showPanel("mainPanel");
         }
 
+        // true if the buttons on the right took the key. Live, right brings them up with Menu picked (on demand,
+        // right skips ahead, so Info's menu is the way there); then up and down move, OK presses, left or Back leaves
+        function controlsKeys(e) {
+            const k = e.key, buttons = [...controls.querySelectorAll("button")].filter(b => !b.hidden);
+            if (!inControls()) {
+                if (k !== "ArrowRight" || od) return false;
+                buttons[0].focus();
+            } else if (k === "ArrowUp" || k === "ArrowDown") {
+                const at = buttons.indexOf(document.activeElement);
+                buttons[Math.min(buttons.length - 1, Math.max(0, at + (k === "ArrowUp" ? -1 : 1)))].focus();
+            } else if (k === "ArrowLeft" || k === "Escape" || k === "GoBack" || k === "BrowserBack" || e.keyCode === 10009 || k === "Backspace") {
+                hideOsd();
+                return true;
+            } else if (k === "Enter" || k === " ") {
+                return false; // the button's own click
+            } else return false;
+            controls.classList.remove("hidden");
+            clearTimeout(osdTimer);
+            osdTimer = setTimeout(hideOsd, CONTROLS_SECONDS * 1000);
+            return true;
+        }
+
         // true if the menu took the key
         function menuKeys(e) {
             const k = e.key, typing = document.activeElement === note;
@@ -913,7 +947,8 @@
                 openMenu();
                 return true;
             }
-            const back = k === "Escape" || k === "GoBack" || k === "BrowserBack" || e.keyCode === 10009 || (!typing && k === "Backspace");
+            const back = k === "Escape" || k === "GoBack" || k === "BrowserBack" || e.keyCode === 10009
+                || (!typing && (k === "Backspace" || k === "ArrowLeft"));
             if (info || (back && shown().id === "mainPanel")) closeMenu();
             else if (back) menuBack();
             else if (k === "ArrowUp" || k === "ArrowDown") {
