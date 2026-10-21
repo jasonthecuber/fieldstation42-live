@@ -41,6 +41,7 @@
         #controls { position: fixed; bottom: 4%; right: 4%; display: flex; flex-direction: column; gap: 12px;
                     transition: opacity .4s; }
         #controls.hidden { opacity: 0; pointer-events: none; }
+        #tv:focus { outline: none; }
         /* a TV browser's pointer (Samsung) hides while it sits still */
         body.idle, body.idle * { cursor: none !important; }
         /* the same, as a see-through image, so the pointer can be switched between two hidden kinds */
@@ -64,16 +65,17 @@
         body.paused #controls.hidden ~ #pause { pointer-events: auto; }
         #pause[hidden], #progress[hidden], #still[hidden] { display: none; }
         /* the menu, in the style of an old set's on-screen menu */
-        #menu { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-                background: rgba(0,0,0,.45); font-size: clamp(16px, 3.2vh, 30px); }
+        #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                gap: 2vh; padding: 4vh 0; box-sizing: border-box; background: rgba(0,0,0,.45); font-size: clamp(16px, 3.2vh, 30px); }
         #menu[hidden], #menu [hidden] { display: none; }
         /* what's on, floating above the menu */
-        #nowOn { position: fixed; top: 4%; left: 50%; transform: translateX(-50%); max-width: 90vw; box-sizing: border-box;
+        /* (in the menu's column, above the panel, so a tall panel shrinks rather than slide under it) */
+        #nowOn { flex: none; max-width: 90vw; box-sizing: border-box;
                  text-align: center; background: rgba(0,0,0,.6); border: 2px solid #ccc; padding: .3em 1em; }
         #nowOn b { display: block; color: #ff3; text-shadow: 2px 2px 0 #000; }
         #nowOn small { display: block; font-size: .75em; color: #ddd; }
         #menu .panel { background: #1c2a8c; border: 4px solid #ccc; padding: 1em 1.4em; min-width: min(80vw, 16em);
-                       max-width: 90vw; max-height: 86vh; overflow-y: auto; box-shadow: 8px 8px 0 #000; }
+                       max-width: 90vw; min-height: 0; overflow-y: auto; box-shadow: 8px 8px 0 #000; }
         #menu h2 { margin: 0 0 .6em; font-size: 1.2em; color: #ff3; text-shadow: 2px 2px 0 #000; }
         #menu button, #menu input { display: block; width: 100%; box-sizing: border-box; margin: .25em 0; padding: .35em .5em;
                                     font: inherit; color: #fff; background: transparent; border: 2px solid transparent;
@@ -90,7 +92,7 @@
     </style>
 </head>
 <body>
-    <video id="tv" playsinline></video>
+    <video id="tv" playsinline tabindex="-1"></video>
     <canvas id="still" hidden></canvas>
     <canvas id="snow" width="160" height="120"></canvas>
     <div id="osd" class="hidden"></div>
@@ -117,7 +119,7 @@
             <button data-key="6" data-go="reportPanel"><b>6</b>Report a problem</button>
             <button data-key="0" data-close><b>0</b>Close</button>
             <p id="mainMsg" class="note"></p>
-            <p class="keys">Back closes the menu</p>
+            <p class="keys">Left closes the menu</p>
         </div>
         <div class="panel" id="channelPanel" hidden>
             <button class="back">&lsaquo; Back</button>
@@ -657,6 +659,11 @@
         });
 
         document.addEventListener("keydown", e => {
+            // a held OK repeats; acting on each one opened the menu, picked Channels, tuned, opened it again...
+            if (e.repeat && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); return; }
+            // focus left on a button that's since been hidden: OK would press it unseen
+            const f = document.activeElement;
+            if (f?.closest?.("#menu") && !menuOpen()) f.blur();
             if (!channels.length || menuKeys(e)) return;
             if (controlsKeys(e)) { e.preventDefault(); return; }
             if (od && odKeys(e)) { e.preventDefault(); return; }
@@ -674,6 +681,8 @@
                 openMenu(); // OK: plenty of remotes (the Onn's) have no Info key
             } else if (k === "f") {
                 toggleFull();
+            } else if (k === "ArrowLeft") {
+                // nothing, but taken: otherwise an Android TV browser moves its focus onto the picture
             } else return;
             e.preventDefault(); // so a TV browser doesn't also scroll or move its focus
         });
@@ -772,6 +781,7 @@
         }
         window.addEventListener("popstate", () => {
             menu.hidden = true;
+            if (document.activeElement?.closest?.("#menu")) document.activeElement.blur();
             if (channels.length) history.replaceState(null, "", "#" + channels[current].channel); // a channel picked meanwhile
         });
         function showPanel(id) {
@@ -918,11 +928,11 @@
         }
 
         // true if the buttons on the right took the key. Live, right brings them up with Menu picked (on demand,
-        // right skips ahead, so Info's menu is the way there); then up and down move, OK presses, left or Back leaves
+        // where left and right skip, up or down does); then up and down move, OK presses, left or Back leaves
         function controlsKeys(e) {
             const k = e.key, buttons = [...controls.querySelectorAll("button")].filter(b => !b.hidden);
             if (!inControls()) {
-                if (k !== "ArrowRight" || od) return false;
+                if (od ? k !== "ArrowUp" && k !== "ArrowDown" : k !== "ArrowRight") return false;
                 buttons[0].focus();
             } else if (k === "ArrowUp" || k === "ArrowDown") {
                 const at = buttons.indexOf(document.activeElement);
@@ -950,8 +960,9 @@
                 return true;
             }
             const back = k === "Escape" || k === "GoBack" || k === "BrowserBack" || e.keyCode === 10009
-                || (!typing && (k === "Backspace" || k === "ArrowLeft"));
-            if (info || (back && shown().id === "mainPanel")) closeMenu();
+                || (!typing && k === "Backspace");
+            // left: out of the menu from any depth (a browser like TV Bro keeps the remote's Back to itself)
+            if (info || (!typing && k === "ArrowLeft") || (back && shown().id === "mainPanel")) closeMenu();
             else if (back) menuBack();
             else if (k === "ArrowUp" || k === "ArrowDown") {
                 const items = focusable(), at = items.indexOf(document.activeElement);
