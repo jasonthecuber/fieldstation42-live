@@ -7,7 +7,7 @@ Runs on the host, once a day from cron (see SETUP.md), against the data folder:
 Seasons are described in <data>/seasons.json:
 
     {
-      "media_root": "/mnt/storage/data/FS42",
+      "media_root": "/mnt/storage/data/channels",
       "timezone": "America/Chicago",
       "seasons": {
         "halloween": {
