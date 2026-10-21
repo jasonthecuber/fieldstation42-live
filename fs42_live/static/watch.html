@@ -117,7 +117,7 @@
             <button data-key="6" data-go="reportPanel"><b>6</b>Report a problem</button>
             <button data-key="0" data-close><b>0</b>Close</button>
             <p id="mainMsg" class="note"></p>
-            <p class="keys">Back or Info closes the menu</p>
+            <p class="keys">Back closes the menu</p>
         </div>
         <div class="panel" id="channelPanel" hidden>
             <button class="back">&lsaquo; Back</button>
@@ -670,7 +670,9 @@
                 showOsd(typed + "-");
                 clearTimeout(typedTimer);
                 typedTimer = setTimeout(() => { tuneNumber(Number(typed)); typed = ""; }, 1200);
-            } else if (k === "f" || (k === "Enter" && !e.target.closest?.("button"))) {
+            } else if (k === "Enter" && !e.target.closest?.("button")) {
+                openMenu(); // OK: plenty of remotes (the Onn's) have no Info key
+            } else if (k === "f") {
                 toggleFull();
             } else return;
             e.preventDefault(); // so a TV browser doesn't also scroll or move its focus
@@ -1008,6 +1010,30 @@
         try {
             if (sessionStorage.getItem("fs42-autostart")) { sessionStorage.removeItem("fs42-autostart"); start.onclick(); }
         } catch (e) {}
+
+        // ?keys: what a remote's keys arrive as, on screen and in the server's log (to fit a new remote/browser)
+        if (new URLSearchParams(location.search).has("keys")) (function keyLog() {
+            const box = document.createElement("pre");
+            box.style.cssText = "position:fixed;top:0;left:0;margin:0;padding:4px 8px;font:14px monospace;color:#3f3;"
+                + "background:rgba(0,0,0,.7);z-index:99;pointer-events:none;max-width:60vw;white-space:pre-wrap";
+            document.body.append(box);
+            const lines = [], el = n => n ? (n.id || n.tagName.toLowerCase()) + (n.textContent ? ` "${n.textContent.trim().slice(0, 12)}"` : "") : "-";
+            const state = () => `focus=${el(document.activeElement)} menu=${menuOpen() ? shown().id : "-"} controls=${controls.classList.contains("hidden") ? "hidden" : "up"}`;
+            function log(line) {
+                lines.push(line); if (lines.length > 8) lines.shift();
+                box.textContent = lines.join("\n");
+                fetch("/live/keylog", { method: "POST", body: line, keepalive: true }).catch(() => {});
+            }
+            // before the page's own handlers (capture), then the result once they've run
+            window.addEventListener("keydown", e => {
+                const before = state();
+                setTimeout(() => log(`down key=${JSON.stringify(e.key)} code=${e.code} keyCode=${e.keyCode} trusted=${e.isTrusted} `
+                    + `prevented=${e.defaultPrevented} | ${before} -> ${state()}`), 50);
+            }, true);
+            window.addEventListener("keyup", e => log(`up   key=${JSON.stringify(e.key)} keyCode=${e.keyCode}`), true);
+            window.addEventListener("click", e => log(`click on ${el(e.target)} trusted=${e.isTrusted} at ${e.clientX},${e.clientY}`), true);
+            log(`key log on: ${innerWidth}x${innerHeight} ${navigator.userAgent.slice(0, 90)}`);
+        })();
     </script>
 </body>
 </html>

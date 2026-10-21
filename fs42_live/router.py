@@ -300,6 +300,13 @@ async def greeting_page():
     return FileResponse(os.path.join(STATIC, "greeting.html"), headers={"Cache-Control": "no-cache"})
 
 
+@router.post("/keylog")
+async def key_log(request: Request):
+    """The web player's ?keys mode: each key a remote sends, for fitting the player to a new remote."""
+    line = (await request.body())[:400].decode(errors="replace")
+    _l.info(f"keylog {request.client.host}: {line}")
+
+
 @router.get("/reports")
 async def problem_reports():
     return await asyncio.to_thread(reports.recent)
