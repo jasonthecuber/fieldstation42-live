@@ -131,7 +131,7 @@ Wide movies (2.39:1, say) letterboxed into the 4:3 picture come out small. `"liv
 
 ## A Prevue-style guide channel
 
-Besides the TV Guide on ch 3, there's a guide in the style of the old Prevue channel: a live preview of each scheduled channel in turn up top, and the listings scrolling below. Add it as a web station:
+Besides the TV Guide on ch 3, there's a guide in the style of the old Prevue channel: a live preview of each scheduled channel in turn up top, and the listings scrolling below. `docker/setup.sh` adds it on ch 2 (`examples/stations/preview_guide.json`); by hand, it's a web station:
 
 ```json
 {"station_conf": {
@@ -141,7 +141,7 @@ Besides the TV Guide on ch 3, there's a guide in the style of the old Prevue cha
 }}
 ```
 
-The music is the real Prevue Channel themes, from archive.org's "tvtunes" uploads (search for "Prevue Channel - Theme Song"); put the MP3s in `runtime/prevue_music`. Any folder of music works. Add `&rotate=60` to the URL to preview each channel for 60 seconds (default 40). While someone watches the guide, the channel in its preview window runs too.
+The music is the real Prevue Channel themes, from archive.org's "tvtunes" uploads (search for "Prevue Channel - Theme Song"); put the MP3s in `runtime/prevue_music`. Until then, setup.sh fills it with WeatherStar's music; any folder of music works. Add `&rotate=60` to the URL to preview each channel for 60 seconds (default 40). While someone watches the guide, the channel in its preview window runs too.
 
 ## Placeholder channels
 

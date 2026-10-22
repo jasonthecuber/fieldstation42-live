@@ -65,7 +65,8 @@ EOF
 fi
 
 say "Creating data folders in $FS42_DATA"
-mkdir -p "$FS42_DATA/confs" "$FS42_DATA/catalog" "$FS42_DATA/runtime/guide_music" "$FS42_DATA/runtime/weather_music"
+mkdir -p "$FS42_DATA/confs" "$FS42_DATA/catalog" "$FS42_DATA/runtime/guide_music" \
+    "$FS42_DATA/runtime/weather_music" "$FS42_DATA/runtime/prevue_music"
 echo "OK"
 
 say "Starter channels"
@@ -75,6 +76,12 @@ if [ -f "$CONFS/guide.json" ]; then
 else
     cp "$REPO/fs42_live/examples/stations/guide.json" "$CONFS/"
     echo "TV Guide: channel 3"
+fi
+if [ -f "$CONFS/preview_guide.json" ]; then
+    echo "Preview Guide: already set up"
+else
+    cp "$REPO/fs42_live/examples/stations/preview_guide.json" "$CONFS/"
+    echo "Preview Guide: channel 2"
 fi
 if [ -f "$CONFS/weather.json" ]; then
     echo "Weather: already set up"
@@ -100,8 +107,9 @@ say "Building and starting the containers (the first build takes several minutes
 docker compose up -d --build
 
 say "Background music"
-# WeatherStar comes with a few smooth-jazz tracks; they suit the guide too
-for dir in weather_music guide_music; do
+# WeatherStar comes with a few smooth-jazz tracks; they suit the guides too, until
+# someone puts the real Prevue themes in prevue_music (SETUP.md says where)
+for dir in weather_music guide_music prevue_music; do
     if ls "$FS42_DATA/runtime/$dir" 2>/dev/null | grep -q .; then
         echo "$dir: already has music"
     else

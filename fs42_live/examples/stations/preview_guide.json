@@ -1,0 +1,10 @@
+{
+  "station_conf": {
+    "network_name": "Preview",
+    "network_long_name": "Preview Guide",
+    "channel_number": 2,
+    "network_type": "web",
+    "live_listing": "Preview Guide",
+    "web_url": "/live/preview_guide.html?music=%2Fruntime%2Fprevue_music"
+  }
+}
