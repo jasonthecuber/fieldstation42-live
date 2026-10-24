@@ -92,7 +92,10 @@
     </style>
 </head>
 <body>
-    <video id="tv" playsinline tabindex="-1"></video>
+    <!-- a blank poster: between channels the video is empty, and Android's browsers show their own
+         gray poster with a play button behind the static -->
+    <video id="tv" playsinline tabindex="-1"
+           poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
     <canvas id="still" hidden></canvas>
     <canvas id="snow" width="160" height="120"></canvas>
     <div id="osd" class="hidden"></div>
