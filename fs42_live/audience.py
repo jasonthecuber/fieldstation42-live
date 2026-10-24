@@ -6,6 +6,9 @@ import itertools
 import time
 
 HLS_GONE = 20  # seconds without a segment fetch before an HLS player counts as gone
+# A live channel sends all the time, so a viewer that has taken nothing for this long is gone:
+# a TV switched off mid-stream never says so, and its stream stays open until TCP gives up.
+LIVE_STALLED = 30
 
 _open = {}  # key -> entry
 _hls = {}   # (host, agent) -> entry, with "last"
@@ -20,9 +23,10 @@ def _entry(request, what):
 async def counted(request, what, stream):
     """`stream`, with its viewer listed for as long as it's open."""
     key = next(_keys)
-    _open[key] = _entry(request, what)
+    entry = _open[key] = _entry(request, what)
     try:
         async for chunk in stream:
+            entry["taken"] = time.time()
             yield chunk
     finally:
         _open.pop(key, None)
@@ -39,8 +43,9 @@ def fetched(request, what):
 
 
 def now():
-    cutoff = time.time() - HLS_GONE
-    for key in [k for k, e in _hls.items() if e["last"] < cutoff]:
+    t = time.time()
+    for key in [k for k, e in _hls.items() if e["last"] < t - HLS_GONE]:
         del _hls[key]
-    return sorted([*_open.values(), *({k: v for k, v in e.items() if k != "last"} for e in _hls.values())],
+    live = [e for e in _open.values() if e["kind"] != "live" or e.get("taken", e["since"]) > t - LIVE_STALLED]
+    return sorted(({k: v for k, v in e.items() if k not in ("last", "taken")} for e in [*live, *_hls.values()]),
                   key=lambda e: e["since"])
