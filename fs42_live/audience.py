@@ -6,9 +6,10 @@ import itertools
 import time
 
 HLS_GONE = 20  # seconds without a segment fetch before an HLS player counts as gone
-# A live channel sends all the time, so a viewer that has taken nothing for this long is gone:
-# a TV switched off mid-stream never says so, and its stream stays open until TCP gives up.
-LIVE_STALLED = 30
+# A stream sends all the time (live, and on demand in real time; a paused on demand player stops
+# its stream after 20 s), so a viewer that has taken nothing for this long is gone: a TV switched
+# off mid-stream never says so, and its stream stays open until TCP gives up.
+STALLED = 30
 
 _open = {}  # key -> entry
 _hls = {}   # (host, agent) -> entry, with "last"
@@ -46,6 +47,6 @@ def now():
     t = time.time()
     for key in [k for k, e in _hls.items() if e["last"] < t - HLS_GONE]:
         del _hls[key]
-    live = [e for e in _open.values() if e["kind"] != "live" or e.get("taken", e["since"]) > t - LIVE_STALLED]
-    return sorted(({k: v for k, v in e.items() if k not in ("last", "taken")} for e in [*live, *_hls.values()]),
+    flowing = [e for e in _open.values() if e.get("taken", e["since"]) > t - STALLED]
+    return sorted(({k: v for k, v in e.items() if k not in ("last", "taken")} for e in [*flowing, *_hls.values()]),
                   key=lambda e: e["since"])
