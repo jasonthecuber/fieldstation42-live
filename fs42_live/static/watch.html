@@ -1022,11 +1022,12 @@
             // phones and TVs (no mouse) go full screen when turned on; a PC stays in its window
             // (TV browsers can report a fine pointer, so they're matched by name too)
             const tv = /Tizen|Web0S|webOS|SMART-TV|SmartTV|Android TV|BRAVIA/i.test(navigator.userAgent);
+            // play while the tap is still a tap, before going full screen: asking for full screen uses the tap
+            // up, and TV Bro then refused to play (a blip of sound, then "Tap to play" again). Once the player
+            // has played on a tap, it may play from then on.
+            video.play().catch(() => {});
             if (tv || !matchMedia("(pointer: fine)").matches) enterFull();
             if (channels.length) { start.hidden = true; play(); return; }
-            // play while the tap is still a tap: once the channel list has loaded it no longer counts, and TV Bro
-            // refused (a blip of sound, then "Tap to play" again). This lets the player play from then on.
-            video.play().catch(() => {});
             start.textContent = "Warming up…";
             const status = await (await fetch("/live/status")).json();
             channels = status.channels.sort((a, b) => a.channel - b.channel);
