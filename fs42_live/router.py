@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import guide, hls, hwaccel, messages, ondemand, reports, settings
+from fs42_live import audience, guide, hls, hwaccel, messages, ondemand, reports, settings
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -42,9 +42,11 @@ def _zoomed(station, crop):
 
 
 @router.get("/stream/{channel}.ts")
-async def stream_channel(channel: int, surf: bool = False, crop: str = ""):
+async def stream_channel(request: Request, channel: int, surf: bool = False, crop: str = ""):
     station = _zoomed(_station(channel), crop)
-    return StreamingResponse(hub.watch(station, surfing=surf), media_type="video/mp2t")
+    what = {"kind": "live", "channel": channel, "name": guide.display_name(station)}
+    return StreamingResponse(audience.counted(request, what, hub.watch(station, surfing=surf)),
+                             media_type="video/mp2t")
 
 
 @router.post("/warm")
@@ -134,10 +136,11 @@ async def hls_playlist(channel: int):
 
 
 @router.get("/hls/{channel}/{name}.ts")
-async def hls_segment(channel: int, name: str):
+async def hls_segment(request: Request, channel: int, name: str):
     path = hls.segment(channel, f"{name}.ts") if name.isdigit() else None
     if path is None:
         raise HTTPException(status_code=404, detail="No such segment")
+    audience.fetched(request, {"kind": "live", "channel": channel, "name": guide.display_name(_station(channel))})
     return FileResponse(path, media_type="video/mp2t")
 
 
@@ -222,7 +225,8 @@ async def ondemand_shuffle(channel: int, breaks: bool = True, plan: str = ""):
 
 
 @router.get("/ondemand/{channel}.ts")
-async def ondemand_stream(channel: int, file: str, start: float = 0, plan: str = "", crop: str = ""):
+async def ondemand_stream(request: Request, channel: int, file: str, start: float = 0, plan: str = "",
+                          crop: str = ""):
     station = _zoomed(_station(channel), crop)
     path = ondemand.allowed(station, file)
     if plan:
@@ -238,7 +242,25 @@ async def ondemand_stream(channel: int, file: str, start: float = 0, plan: str =
         start = max(0.0, min(start, length - 1))
         segments = [ondemand.Segment(path, start, length - start)]
     _l.info(f"{station['network_name']}: on demand {os.path.basename(file)} from {start:.0f}s{' (retro)' if plan else ''}")
-    return StreamingResponse(ondemand.OnDemandSource(station, segments).stream(), media_type="video/mp2t")
+    what = {"kind": "ondemand", "channel": channel, "name": guide.display_name(station),
+            "title": "Shuffle" if file.startswith("shuffle:") else os.path.splitext(os.path.basename(file))[0]}
+    return StreamingResponse(audience.counted(request, what, ondemand.OnDemandSource(station, segments).stream()),
+                             media_type="video/mp2t")
+
+
+@router.get("/viewers")
+async def viewers():
+    """What's being watched now, and from where (the box's Control Room lists them), with what's on
+    the live channels."""
+    found = audience.now()
+    on_now = {}
+    for n in {v["channel"] for v in found if v["kind"] == "live"}:
+        try:
+            show = await asyncio.to_thread(ondemand.now_showing, _station(n))
+        except HTTPException:
+            show = None
+        on_now[n] = show and " · ".join(filter(None, [show["title"], show["episode"]]))
+    return [{**v, "on_now": on_now.get(v["channel"])} if v["kind"] == "live" else v for v in found]
 
 
 @router.post("/report")
