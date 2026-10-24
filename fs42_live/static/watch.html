@@ -773,15 +773,23 @@
                 if (opened === openedAt && menuOpen()) fill(now.title, now.episode);
             } catch (e) {}
         }
+        function hideMenu() {
+            // a scrolled list left as it was can stay on an Android TV browser's screen once hidden (an onn
+            // stick, a level into on demand): back to the top, and the on-demand lines gone, first
+            panels.forEach(p => p.scrollTop = 0);
+            document.getElementById("odList").replaceChildren();
+            odLevel = [];
+            menu.hidden = true;
+        }
         function closeMenu() {
             if (!menuOpen()) return;
-            menu.hidden = true;
             document.activeElement?.blur();
+            hideMenu();
             if (history.state?.menu) history.back();
         }
         window.addEventListener("popstate", () => {
-            menu.hidden = true;
             if (document.activeElement?.closest?.("#menu")) document.activeElement.blur();
+            hideMenu();
             if (channels.length) history.replaceState(null, "", "#" + channels[current].channel); // a channel picked meanwhile
         });
         function showPanel(id) {
