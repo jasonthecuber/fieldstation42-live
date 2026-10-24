@@ -181,6 +181,12 @@
 
         function remember(n) { try { localStorage.setItem("fs42-channel", n); } catch (e) {} }
         function remembered() { try { return Number(localStorage.getItem("fs42-channel")); } catch (e) { return 0; } }
+        // The address and history change only here, while the page loads: TV Bro flashes its loading bar
+        // on every change. A link's #channel picks the first channel; remember() keeps it for a reload.
+        // The extra history step is what a browser's Back takes first: it closes the menu (see popstate).
+        const linked = Number(location.hash.slice(1));
+        if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
+        if (!history.state?.back) history.pushState({ back: 1 }, "");
 
         function showOsd(text, sub) {
             osd.innerHTML = text + (sub ? `<small>${sub}</small>` : "");
@@ -763,7 +769,6 @@
             showNowOn();
             menu.hidden = false;
             controls.classList.add("hidden");
-            history.pushState({ menu: 1 }, "", location.hash); // so a browser's own Back closes the menu, not the page
             showPanel("mainPanel");
         }
         // the show on now and its episode, above the menu (on a web page channel, nothing)
@@ -795,11 +800,14 @@
             if (!menuOpen()) return;
             document.activeElement?.blur();
             hideMenu();
-            if (history.state?.menu) history.back();
         }
+        // a browser's own Back took the extra step: with the menu open, close it and put the step back (the
+        // one flash of TV Bro's bar left); with it closed, carry on back out of the page
         window.addEventListener("popstate", () => {
+            if (!menuOpen()) return history.back();
             if (document.activeElement?.closest?.("#menu")) document.activeElement.blur();
             hideMenu();
+            history.pushState({ back: 1 }, "");
         });
         function showPanel(id) {
             panels.forEach(p => p.hidden = p.id !== id);
@@ -1034,10 +1042,7 @@
             channels = status.channels.sort((a, b) => a.channel - b.channel);
             warmNeighbours = status.warm_neighbours || 0;
             start.hidden = true;
-            const wanted = Number(location.hash.slice(1)) || remembered();
-            // a link's #channel picks the first one only; after that the address stays put, since changing it on
-            // each channel flashes TV Bro's loading bar, and remember() keeps the channel for a reload
-            if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
+            const wanted = linked || remembered();
             const i = channels.findIndex(c => c.channel === wanted);
             tune(i >= 0 ? i : 0);
         };
