@@ -1062,6 +1062,20 @@
             }, true);
             window.addEventListener("keyup", e => log(`up   key=${JSON.stringify(e.key)} keyCode=${e.keyCode}`), true);
             window.addEventListener("click", e => log(`click on ${el(e.target)} trusted=${e.isTrusted} at ${e.clientX},${e.clientY}`), true);
+            // and what the player does with it: starting, stopping, full screen, the start button asking again
+            const t0 = Date.now(), at = () => `+${((Date.now() - t0) / 1000).toFixed(1)}s`;
+            for (const name of ["play", "playing", "pause", "waiting", "stalled", "emptied", "error"])
+                video.addEventListener(name, () => log(`video ${name} ${at()} paused=${video.paused} ready=${video.readyState}`));
+            for (const name of ["fullscreenchange", "webkitfullscreenchange"])
+                document.addEventListener(name, () => log(`${name} ${at()} full=${isFull()}`));
+            new MutationObserver(() => log(`start ${at()} "${start.textContent}" hidden=${start.hidden}`))
+                .observe(start, { attributes: true, childList: true, characterData: true, subtree: true });
+            const playing = HTMLMediaElement.prototype.play;
+            video.play = function () {
+                const p = playing.call(this);
+                p?.catch?.(e => log(`play refused ${at()} ${e.name}: ${e.message.slice(0, 80)}`));
+                return p;
+            };
             log(`key log on: ${innerWidth}x${innerHeight} ${navigator.userAgent.slice(0, 90)}`);
         })();
     </script>
