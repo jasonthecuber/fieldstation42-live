@@ -257,7 +257,6 @@
             const ch = channels[current];
             showOsd(ch.channel, ch.display);
             remember(ch.channel);
-            history.replaceState(history.state, "", "#" + ch.channel); // (keeps the menu's entry, if it's open)
             lastMoved = Date.now();
             snow.classList.remove("hidden");
             stopPlayer();
@@ -801,7 +800,6 @@
         window.addEventListener("popstate", () => {
             if (document.activeElement?.closest?.("#menu")) document.activeElement.blur();
             hideMenu();
-            if (channels.length) history.replaceState(null, "", "#" + channels[current].channel); // a channel picked meanwhile
         });
         function showPanel(id) {
             panels.forEach(p => p.hidden = p.id !== id);
@@ -1037,6 +1035,9 @@
             warmNeighbours = status.warm_neighbours || 0;
             start.hidden = true;
             const wanted = Number(location.hash.slice(1)) || remembered();
+            // a link's #channel picks the first one only; after that the address stays put, since changing it on
+            // each channel flashes TV Bro's loading bar, and remember() keeps the channel for a reload
+            if (location.hash) history.replaceState(history.state, "", location.pathname + location.search);
             const i = channels.findIndex(c => c.channel === wanted);
             tune(i >= 0 ? i : 0);
         };
