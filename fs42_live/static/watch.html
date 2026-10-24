@@ -658,9 +658,17 @@
             else toggleFull();
         });
 
+        // OK still down since its last press: TV Bro doesn't mark a held key's repeats (the second after a lost
+        // key-up, it counts as a new press again)
+        let okDownAt = 0;
+        document.addEventListener("keyup", e => { if (e.key === "Enter" || e.key === " ") okDownAt = 0; });
         document.addEventListener("keydown", e => {
             // a held OK repeats; acting on each one opened the menu, picked Channels, tuned, opened it again...
-            if (e.repeat && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); return; }
+            if (e.key === "Enter" || e.key === " ") {
+                const held = e.repeat || Date.now() - okDownAt < 1000;
+                okDownAt = Date.now();
+                if (held) { e.preventDefault(); return; }
+            }
             // focus left on a button that's since been hidden: OK would press it unseen
             const f = document.activeElement;
             if (f?.closest?.("#menu") && !menuOpen()) f.blur();
