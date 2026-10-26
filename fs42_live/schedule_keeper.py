@@ -46,8 +46,10 @@ _busy = threading.Lock()
 _last_soon = 0.0
 
 
-def refresh_and_extend():
+def refresh_and_extend(started=None):
     with _busy:
+        if started:
+            started()
         # new media first, so time added below can use it
         refresh_changed_catalogs()
         extend_if_needed()
@@ -77,9 +79,21 @@ def refresh_soon():
     threading.Thread(target=_refresh_quietly, daemon=True).start()
 
 
-def _refresh_quietly():
+_waiting = threading.Lock()
+
+
+def refresh_now():
+    """For Control Room, which just took things off the channels or put them back: catch up now.
+    One already running may have looked before the change, so this waits its turn; one waiting
+    is enough for any number of changes."""
+    if not _waiting.acquire(blocking=False):
+        return
+    threading.Thread(target=_refresh_quietly, args=(_waiting.release,), daemon=True).start()
+
+
+def _refresh_quietly(started=None):
     try:
-        refresh_and_extend()
+        refresh_and_extend(started)
     except Exception:
         _l.exception("schedule keeper: catch-up failed")
 

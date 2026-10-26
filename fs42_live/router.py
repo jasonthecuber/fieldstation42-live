@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import audience, guide, hls, hwaccel, messages, ondemand, reports, settings
+from fs42_live import audience, guide, hls, hwaccel, messages, ondemand, reports, schedule_keeper, settings
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -120,6 +120,14 @@ async def status():
         "profile": f"{p.width}x{p.height} @ {p.fps} fps, video {p.video_bitrate} (max {p.video_maxrate}), "
                    f"audio AAC {p.audio_bitrate}",
     }
+
+
+@router.post("/catalogs/refresh")
+async def refresh_catalogs():
+    """Control Room, after it deletes something on the channels or puts it back: the schedules
+    catch up now, not within the hour."""
+    schedule_keeper.refresh_now()
+    return {}
 
 
 @router.post("/channels/{channel}/restart")
