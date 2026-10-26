@@ -25,8 +25,9 @@ _l = logging.getLogger("FS42LIVE")
 STATE_DIR = "runtime/live_state"
 
 
-def refresh_changed_catalogs():
-    """Returns True if any catalog was rebuilt."""
+def refresh_changed_catalogs(keep_schedules=()):
+    """Returns True if any catalog was rebuilt. The stations named in keep_schedules keep theirs
+    even when files have gone: the caller has already taken those out of it."""
     changed = False
     for station in StationManager().stations:
         if not station.get("_has_catalog") or not station.get("content_dir"):
@@ -47,7 +48,7 @@ def refresh_changed_catalogs():
                 continue
             added, gone = len(now - before), len(before - now)
             _l.info(f"catalog watcher: {name} has {added} new and {gone} removed files; updating its catalog")
-            update(station, keep_schedule=not gone)
+            update(station, keep_schedule=not gone or name in keep_schedules)
             changed = True
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(state, "w") as f:

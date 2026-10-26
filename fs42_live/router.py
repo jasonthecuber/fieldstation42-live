@@ -130,6 +130,17 @@ async def refresh_catalogs():
     return {}
 
 
+@router.post("/replan/{network_name}")
+async def replan(network_name: str):
+    """Control Room, after it puts a show on a channel or takes one off: that channel's schedule is
+    planned again from the end of what's on now. Answers when that's done."""
+    try:
+        start = await asyncio.to_thread(schedule_keeper.replan, network_name)
+    except KeyError:
+        raise HTTPException(404, f"No channel named {network_name}")
+    return {"from": start.isoformat() if start else None}
+
+
 @router.post("/channels/{channel}/restart")
 async def restart_channel(channel: int):
     return {"restarted": hub.restart(channel)}

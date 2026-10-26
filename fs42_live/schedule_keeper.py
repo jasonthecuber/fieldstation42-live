@@ -13,8 +13,10 @@ import threading
 import time
 
 from fs42.liquid_api import LiquidAPI
+from fs42.liquid_io import LiquidIO
 from fs42.liquid_manager import LiquidManager
 from fs42.liquid_schedule import LiquidSchedule
+from fs42.sequence_api import SequenceAPI
 from fs42.station_manager import StationManager
 from fs42_live.break_finder import rebuilt, scan_new_episodes
 from fs42_live.catalog_watcher import refresh_changed_catalogs
@@ -118,6 +120,58 @@ def rebuild(stations):
             LiquidManager().reset_schedule(station)
         extend_if_needed()
     rebuilt(stations)
+
+
+def replan(network_name):
+    """For Control Room, which just put a show on a channel or took one off (its conf and catalog
+    folder changed): the channel's schedule is planned again from the end of what's on now, so the
+    change airs within the hour or so, not after the week already planned. Returns when the new
+    plan starts (None if it has no schedule); KeyError if there's no such channel."""
+    with _busy:
+        manager = StationManager()
+        manager._reload_stations()  # its conf may have changed
+        station = manager.station_by_name(network_name)
+        if station is None:
+            raise KeyError(network_name)
+        cut = _cut(station) if station.get("_has_schedule") and station["network_type"] == "standard" else None
+        refresh_changed_catalogs(keep_schedules=(network_name,))
+        if cut:
+            threshold = datetime.datetime.now() + TRIGGER_DELTAS[(
+                manager.server_conf.get("schedule_agent") or DEFAULT_CONF)["trigger_add_at"]]
+            station = StationManager().station_by_name(network_name)
+            for _ in range(3):  # from a weekday, the first add only runs to Monday
+                LiquidSchedule(station).add_amount("week")
+                if LiquidAPI.get_blocks(station)[-1].end_time >= threshold:
+                    break
+            _l.info(f"schedule keeper: {network_name} planned again from {cut}")
+        extend_if_needed()
+        reload_without_gap(LiquidManager())
+    return cut
+
+
+def _cut(station):
+    """Keeps the schedule up to the end of what's on now (its start, if a file of it is gone, so
+    something else plays), winds each show's episodes back to its first one after that, and deletes
+    the rest. Returns that time, or None if nothing's planned from now."""
+    now = datetime.datetime.now()
+    blocks = LiquidAPI.get_blocks(station)
+    on = next((b for b in blocks if b.end_time > now), None)
+    if on is None:
+        return None
+    cut = on.end_time
+    if on.start_time <= now and any(not p.is_stream and not os.path.exists(p.path) for p in on.plan or []):
+        cut = on.start_time
+    seen = set()
+    for b in blocks:
+        if b.start_time >= cut and b.sequence_key and b.content and not isinstance(b.content, list):
+            key = (b.sequence_key["sequence_name"], b.sequence_key["tag_path"])
+            if key not in seen:
+                seen.add(key)
+                SequenceAPI.reset_by_episode_path(station, *key, b.content.path)
+    with LiquidIO()._get_connection() as db:
+        db.execute("DELETE FROM liquid_blocks WHERE station = ? AND start_time >= ?",
+                   (station["network_name"], cut))
+    return cut
 
 
 def extend_if_needed():
