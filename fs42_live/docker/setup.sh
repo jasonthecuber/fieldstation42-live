@@ -71,13 +71,14 @@ echo "OK"
 
 say "Starter channels"
 CONFS="$FS42_DATA/confs"
-if [ -f "$CONFS/guide.json" ]; then
+# a guide turned off in Control Room's Settings waits in confs/off
+if [ -f "$CONFS/guide.json" ] || [ -f "$CONFS/off/guide.json" ]; then
     echo "TV Guide: already set up"
 else
     cp "$REPO/fs42_live/examples/stations/guide.json" "$CONFS/"
     echo "TV Guide: channel 3"
 fi
-if [ -f "$CONFS/preview_guide.json" ]; then
+if [ -f "$CONFS/preview_guide.json" ] || [ -f "$CONFS/off/preview_guide.json" ]; then
     echo "Preview Guide: already set up"
 else
     cp "$REPO/fs42_live/examples/stations/preview_guide.json" "$CONFS/"

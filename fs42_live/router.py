@@ -141,6 +141,20 @@ async def replan(network_name: str):
     return {"from": start.isoformat() if start else None}
 
 
+@router.post("/stations/reload")
+async def stations_reload():
+    """Control Room, after it makes a channel, removes one or puts one back: Retro TV takes the
+    change in. Answers when the new one's schedule is planned."""
+    try:
+        out = await asyncio.to_thread(schedule_keeper.stations_changed)
+    except Exception as e:
+        _l.exception("stations reload failed")
+        raise HTTPException(500, f"{type(e).__name__}: {e}")
+    for number in out.pop("restart"):
+        hub.restart(number)
+    return out
+
+
 @router.post("/channels/{channel}/restart")
 async def restart_channel(channel: int):
     return {"restarted": hub.restart(channel)}

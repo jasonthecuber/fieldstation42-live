@@ -7,11 +7,13 @@ config) and builds the way the web console's "add time" does: in a thread, then 
 
 import asyncio
 import datetime
+import json
 import os
 import logging
 import threading
 import time
 
+from fs42.catalog_api import CatalogAPI
 from fs42.liquid_api import LiquidAPI
 from fs42.liquid_io import LiquidIO
 from fs42.liquid_manager import LiquidManager
@@ -19,7 +21,8 @@ from fs42.liquid_schedule import LiquidSchedule
 from fs42.sequence_api import SequenceAPI
 from fs42.station_manager import StationManager
 from fs42_live.break_finder import rebuilt, scan_new_episodes
-from fs42_live.catalog_watcher import refresh_changed_catalogs
+from fs42.catalog import ShowCatalog
+from fs42_live.catalog_watcher import STATE_DIR, MergingCatalog, media_in, refresh_changed_catalogs
 from fs42_live import jellyfin_guide
 
 _l = logging.getLogger("FS42LIVE")
@@ -147,6 +150,51 @@ def replan(network_name):
         extend_if_needed()
         reload_without_gap(LiquidManager())
     return cut
+
+
+def stations_changed():
+    """For Control Room, which just made a channel, removed one or put one back (a conf added to or
+    gone from confs/): Retro TV takes it in without a restart. A new channel's catalog is built and
+    its schedule planned; a gone one's schedule is deleted (its catalog and episode places stay, for
+    putting it back). Returns {"added", "removed": [network names], "restart": [channel numbers whose
+    running encodes are now of something else]}."""
+    with _busy:
+        manager = StationManager()
+        before = {s["network_name"]: s["channel_number"] for s in manager.stations}
+        manager._reload_stations()
+        now = {s["network_name"]: s for s in manager.stations}
+        with LiquidIO()._get_connection() as db:
+            planned = {r[0] for r in db.execute("SELECT DISTINCT station FROM liquid_blocks")}
+            removed = sorted((set(before) | planned) - set(now))
+            for name in removed:
+                db.execute("DELETE FROM liquid_blocks WHERE station = ?", (name,))
+        added = []
+        threshold = datetime.datetime.now() + TRIGGER_DELTAS[(
+            manager.server_conf.get("schedule_agent") or DEFAULT_CONF)["trigger_add_at"]]
+        for name, station in now.items():
+            # a new one's (or one put back, or one made again with a deleted one's name): only the
+            # differences are written, so one put back keeps its episodes' places
+            if station.get("_has_catalog") and station.get("content_dir") and (
+                    name not in before or not CatalogAPI.get_entries(station)):
+                _l.info(f"schedule keeper: {name} is new; building its catalog")
+                ShowCatalog.clear_fluid_cache()
+                MergingCatalog(station, rebuild_catalog=True)
+                os.makedirs(STATE_DIR, exist_ok=True)  # what the catalog watcher compares against
+                with open(os.path.join(STATE_DIR, f"media_{name}.json"), "w") as f:
+                    json.dump(sorted(media_in(station["content_dir"])), f)
+            if station.get("_has_schedule") and name not in planned:
+                station = StationManager().station_by_name(name)
+                for _ in range(3):  # from a weekday, the first add only runs to Monday
+                    LiquidSchedule(station).add_amount("week")
+                    if LiquidAPI.get_blocks(station)[-1].end_time >= threshold:
+                        break
+                _l.info(f"schedule keeper: {name} planned")
+            if name not in before:
+                added.append(name)
+        reload_without_gap(LiquidManager())
+    numbers = {n for name, n in before.items() if name not in now or now[name]["channel_number"] != n}
+    numbers |= {s["channel_number"] for name, s in now.items() if name not in before}
+    return {"added": sorted(added), "removed": removed, "restart": sorted(numbers)}
 
 
 def _cut(station):
