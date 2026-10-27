@@ -23,6 +23,7 @@ STORE = "runtime/logos.json"  # realpath -> {"size": bytes, "boxes": [[x, y, w, 
 WIDTH = 480  # frames are looked at this wide
 FRAMES = 20
 STATIC = 0.7  # an edge in this share of the frames that show something is part of a logo
+LEAST_SECONDS = 300  # shorter (idents, bumpers, ads) hold too still: all of it would look like a logo
 CHECK_EVERY = 600
 EDGE = bytes([0] + [1] * 255)  # translate: any edge -> 1
 
@@ -91,8 +92,10 @@ def _size(path):
 
 def find(path, duration, crop=None):
     """[[x, y, w, h], ...] of the logos in a file, in its own pixels (at most one a corner), or []."""
+    if (duration or 0) < LEAST_SECONDS:
+        return []
     vw, vh = _size(path)
-    if not duration or not vw or not vh:
+    if not vw or not vh:
         return []
     w, h = WIDTH, max(2, round(vh * WIDTH / vw / 2) * 2)
     # each frame's edges as 0/1 bytes, added up as one big number: a byte per pixel counts its frames
