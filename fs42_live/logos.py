@@ -238,8 +238,8 @@ def find(path, duration, crop=None, harder=False):
 
 
 def scan_new_files():
-    """Looks at every catalog video (shortest first) and anything queued by the encoder, skipping
-    files already looked at, and ones whose bars aren't known yet."""
+    """Looks at every catalog video (shortest first), skipping files already looked at, and ones whose
+    bars aren't known yet. Anything queued meanwhile (by the encoder, or Control Room) goes next."""
     paths = {}
     for station in StationManager().stations:
         if station.get("_has_catalog"):
@@ -247,13 +247,16 @@ def scan_new_files():
                 path = entry.realpath or os.path.realpath(entry.path)
                 if entry.duration and os.path.splitext(path)[1].lower() in bars.VIDEO_EXTS:
                     paths[path] = entry.duration
-    with _lock:
-        queued = set(_queued)
-        _queued.clear()
-    for path in queued - set(paths):
-        paths[path] = bars._probe_duration(path)
-    done = 0
-    for path, duration in sorted(paths.items(), key=lambda p: p[1] or 0):
+    order = sorted(paths, key=lambda p: paths[p], reverse=True)  # .pop() takes the shortest
+    asked, done = set(), 0
+    while True:
+        with _lock:
+            asked |= _queued
+            order += sorted(_queued)
+            _queued.clear()
+        if not order:
+            break
+        path = order.pop()
         with _lock:
             if _found(path) is not False or not os.path.exists(path):
                 continue
@@ -263,11 +266,11 @@ def scan_new_files():
             continue
         with _lock:
             harder = choice(path) == "harder"
-        boxes = find(path, duration or 0, crop, harder)
+        boxes = find(path, paths.get(path) or bars._probe_duration(path) or 0, crop, harder)
         with _lock:
             _load()[path] = {"size": os.path.getsize(path), "boxes": boxes, "harder": harder}
             done += 1
-            if done % 50 == 0:
+            if done % 50 == 0 or path in asked:  # Control Room shows what was asked for as it's done
                 _save()
         if boxes:
             _l.info(f"logos: {os.path.basename(path)}: {boxes}")
