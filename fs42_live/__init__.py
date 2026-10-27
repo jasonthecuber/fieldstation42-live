@@ -11,6 +11,7 @@ def install(app):
     from fs42_live.guide import fill_in_retro_guide
     from fs42_live.loudness import keep_measured
     from fs42_live.bars import keep_found
+    from fs42_live import logos
 
     from fastapi.responses import RedirectResponse
 
@@ -27,6 +28,7 @@ def install(app):
         breaks = asyncio.create_task(keep_breaks_found())
         levels = asyncio.create_task(keep_measured())
         cropped = asyncio.create_task(keep_found())
+        unbranded = asyncio.create_task(logos.keep_found())
         try:
             async with upstream_lifespan(a) as state:
                 yield state
@@ -35,5 +37,6 @@ def install(app):
             breaks.cancel()
             levels.cancel()
             cropped.cancel()
+            unbranded.cancel()
 
     app.router.lifespan_context = lifespan

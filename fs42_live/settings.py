@@ -20,6 +20,8 @@ DEFAULTS = {
     "loudness_target": -24,
     # where Jellyfin is, to tell it when the guide changes (from inside the container: the host's port)
     "jellyfin_url": "http://host.docker.internal:8096",
+    # smudge out channel logos burned into shows (BUZZR's, MeTV's), found by logos.py
+    "hide_logos": True,
 }
 
 
