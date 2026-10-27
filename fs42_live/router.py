@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import audience, guide, hls, hwaccel, messages, ondemand, reports, schedule_keeper, settings
+from fs42_live import audience, guide, hls, hwaccel, logos, messages, ondemand, reports, schedule_keeper, settings
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -127,6 +127,19 @@ async def refresh_catalogs():
     """Control Room, after it deletes something on the channels or puts it back: the schedules
     catch up now, not within the hour."""
     schedule_keeper.refresh_now()
+    return {}
+
+
+@router.post("/logos")
+async def choose_logos(request: Request):
+    """Control Room: {"path": a file or folder, "how": "show" (leave its logos), "harder" (look again, harder)
+    or "" (as usual)}. Takes effect from the next file a channel starts."""
+    body = await request.json()
+    path, how = str(body.get("path") or ""), body.get("how") or ""
+    if how not in ("", "show", "harder") or not os.path.isabs(path) or not os.path.exists(path):
+        raise HTTPException(status_code=400, detail='an existing path, and how: "show", "harder" or ""')
+    logos.choose(path, how)
+    _l.info(f"logos: {how or 'as usual'} for {path}")
     return {}
 
 
