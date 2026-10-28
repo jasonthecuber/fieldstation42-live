@@ -166,7 +166,8 @@ def pan_filter(path, start, duration):
     for t in sorted(times):
         x = round(_middle(plan, t), 4)
         if x != last:
-            lines.append(f"{t - start:.3f} crop@pan x iw*{x}-ow/2;\n")
+            # half a frame early: the times are rounded, and a cut's move a frame late shows the old place
+            lines.append(f"{max(0.0, t - start - step / 2):.3f} crop@pan x iw*{x}-ow/2;\n")
             last = x
     fd, name = tempfile.mkstemp(prefix="fs42-pan-", suffix=".txt")
     with os.fdopen(fd, "w") as f:
