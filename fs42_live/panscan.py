@@ -1,7 +1,7 @@
 """Pan and scan: a wide movie cropped to a narrower screen (a viewer's Full screen, or a channel's 16:9 for
 a 2.35 film) follows the action, as TV's operators did, instead of always showing the middle.
 
-Each wide file is looked at once, in the background, in its own low-priority process (about a quarter of
+Each wide file is looked at once, in the background, in its own low-priority process (about a ninth of
 the movie's length, with the GPU decoding): every frame for cuts, every 4th for faces (YuNet). In each shot,
 its people are the faces there most of the time and about as big as the biggest; passers-by don't count.
 The window wants all of them if they fit, else whoever's mouth is moving, else the biggest. An operator
