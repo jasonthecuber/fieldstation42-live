@@ -7,7 +7,7 @@ from asyncio.subprocess import DEVNULL, PIPE
 from dataclasses import dataclass
 
 from fs42.liquid_manager import LiquidManager
-from fs42_live import bars, captions, hwaccel, logos, loudness, messages
+from fs42_live import bars, captions, hwaccel, logos, loudness, messages, panscan
 from fs42_live.profile import RETRO
 from fs42_live.schedule_keeper import refresh_soon
 
@@ -168,7 +168,7 @@ class ScheduledSource:
     async def _run_encode(self, seg, pts, out):
         """Returns False if ffmpeg failed."""
         p = self.profile
-        overlay = None
+        overlay, pan, pan_file = None, "", None
         if seg.path is None:
             video_in = ["-f", "lavfi", "-i", f"color=c=black:s={p.width}x{p.height}:r={p.fps}"]
             has_audio = False
@@ -180,24 +180,30 @@ class ScheduledSource:
             has_audio = await self._has_audio(seg.path)
             if captions.wanted(self.station, seg.path):
                 overlay = captions.drawtext(seg.path, seg.start, seg.start + seg.duration)
+            if self.station.get("live_crop_to"):
+                pan, pan_file = panscan.pan_filter(seg.path, seg.start, seg.duration)
 
         overlay = messages.join(overlay, messages.crawl_filter(self.station["channel_number"], pts))
         hw = await asyncio.to_thread(hwaccel.vaapi)
         _l.info(f"{self.network}: {seg.path} from {seg.start:.1f}s for {seg.duration:.1f}s")
-        proc = await self._spawn(
-            os.path.basename(seg.path or "slate"),
-            *hwaccel.input_args(), "-re", *video_in,
-            "-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo",
-            "-map", "0:v:0", "-map", "0:a:0" if has_audio else "1:a",
-            "-t", f"{seg.duration:.3f}", "-shortest",
-            "-vf", p.video_filter(hw, overlay, self.station.get("live_crop_to"), bars.crop_filter(seg.path),
-                                 logos.logo_filter(seg.path)), "-af", loudness.audio_filter(seg.path),
-            *p.encode_args(hw),
-            "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
-        )
-        while chunk := await proc.stdout.read(CHUNK):
-            out.put_nowait(chunk)
-        return await proc.wait() == 0
+        try:
+            proc = await self._spawn(
+                os.path.basename(seg.path or "slate"),
+                *hwaccel.input_args(), "-re", *video_in,
+                "-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo",
+                "-map", "0:v:0", "-map", "0:a:0" if has_audio else "1:a",
+                "-t", f"{seg.duration:.3f}", "-shortest",
+                "-vf", p.video_filter(hw, overlay, self.station.get("live_crop_to"), bars.crop_filter(seg.path),
+                                     logos.logo_filter(seg.path), pan), "-af", loudness.audio_filter(seg.path),
+                *p.encode_args(hw),
+                "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
+            )
+            while chunk := await proc.stdout.read(CHUNK):
+                out.put_nowait(chunk)
+            return await proc.wait() == 0
+        finally:
+            if pan_file:
+                os.remove(pan_file)
 
     async def _has_audio(self, path):
         if path not in self._audio_cache:

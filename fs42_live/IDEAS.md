@@ -131,7 +131,9 @@ Milestones live in ARCHITECTURE.md; anything here gets promoted there once it's 
   Saddles) letterboxed into 4:3 come out tiny, with bars on all four sides in a 16:9 player.
   Old TV cropped them to fill the screen, which loses almost half the width. A per-station
   setting: letterbox (now), full crop, or a middle ground that crops the sides to about 16:9 and
-  keeps thin bars.
+  keeps thin bars. **Crop done 2026-10-16** (`live_crop_to`, and the web player's Zoom). **The crop
+  follows the action, done 2026-10-27** (panscan.py): faces, who's talking, an operator that pans and
+  cuts. Later, maybe: knowing the stars (when two groups don't fit, it can follow the wrong one).
 - **Even out loudness per file.** **Done 2026-10-16** (fs42_live/loudness.py, `loudness_target` -24). The movies
   range from -19 to -29 LUFS (See No Evil is the quiet one); the ads are -22. Measure each
   file once, like the act-break scan, and apply a gain. Web channels' music: each track gets a levelled copy (2026-10-17).

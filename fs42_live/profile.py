@@ -16,7 +16,7 @@ class OutputProfile:
     audio_bitrate: str = "128k"
     audio_rate: int = 48000
 
-    def video_filter(self, hw=False, overlay=None, crop_to=None, bars="", logos=""):
+    def video_filter(self, hw=False, overlay=None, crop_to=None, bars="", logos="", pan=""):
         # Square the pixels first (DVD rips are often anamorphic), then fit inside the
         # frame: widescreen gets letterboxed, 4:3 fills it with no bars. The scaling stays
         # on the CPU either way; with hw the frames are then handed to the GPU encoder.
@@ -25,11 +25,12 @@ class OutputProfile:
         # first, as TV's pan and scan did: "4:3" fills the screen, "14:9" or "16:9" keep thin bars.
         # `bars` (bars.crop_filter) cuts off black bars made part of the picture before that.
         # `logos` (logos.logo_filter) smudges out channel logos, in the file's own pixels, so first of all.
+        # `pan` (panscan.pan_filter) moves that crop to follow the action, instead of keeping the middle.
         w, h = self.width, self.height
         aspect = _aspect(crop_to)
         return (
             logos + (bars if aspect else "") + "scale=trunc(iw*sar/2)*2:ih,setsar=1,"
-            + (f"crop=w='min(iw,trunc(ih*{aspect:.4f}/2)*2)':h=ih," if aspect else "") +
+            + (f"{pan}crop@pan=w='min(iw,trunc(ih*{aspect:.4f}/2)*2)':h=ih," if aspect else "") +
             f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
             + (f"{overlay}," if overlay else "") +

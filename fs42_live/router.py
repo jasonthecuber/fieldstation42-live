@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse, PlainTextResponse, Response, Streami
 
 from fs42.liquid_manager import LiquidManager
 from fs42.station_manager import StationManager
-from fs42_live import audience, guide, hls, hwaccel, logos, messages, ondemand, reports, schedule_keeper, settings
+from fs42_live import audience, guide, hls, hwaccel, logos, messages, ondemand, panscan, reports, schedule_keeper, settings
 from fs42_live.hub import hub
 from fs42_live.profile import RETRO
 
@@ -140,6 +140,19 @@ async def choose_logos(request: Request):
         raise HTTPException(status_code=400, detail='an existing path, and how: "show", "harder" or ""')
     logos.choose(path, how)
     _l.info(f"logos: {how or 'as usual'} for {path}")
+    return {}
+
+
+@router.post("/panscan")
+async def choose_panscan(request: Request):
+    """Control Room: {"path": a file or folder, "how": "middle" (a crop keeps the middle) or "" (it follows
+    the action)}. Takes effect from the next file a channel starts."""
+    body = await request.json()
+    path, how = str(body.get("path") or ""), body.get("how") or ""
+    if how not in ("", "middle") or not os.path.isabs(path) or not os.path.exists(path):
+        raise HTTPException(status_code=400, detail='an existing path, and how: "middle" or ""')
+    panscan.choose(path, how)
+    _l.info(f"panscan: {how or 'following the action'} for {path}")
     return {}
 
 

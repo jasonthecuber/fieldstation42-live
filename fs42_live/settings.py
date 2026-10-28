@@ -22,6 +22,8 @@ DEFAULTS = {
     "jellyfin_url": "http://host.docker.internal:8096",
     # smudge out channel logos burned into shows (BUZZR's, MeTV's), found by logos.py
     "hide_logos": True,
+    # a wide movie cropped narrower follows the action instead of keeping the middle, found by panscan.py
+    "pan_scan": True,
 }
 
 
