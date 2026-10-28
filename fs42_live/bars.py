@@ -19,10 +19,13 @@ from fs42.station_manager import StationManager
 
 _l = logging.getLogger("FS42LIVE")
 
-STORE = "runtime/bars.json"  # realpath -> {"size": bytes, "crop": [w, h, x, y] or None}
+STORE = "runtime/bars.json"  # realpath -> {"size": bytes, "crop": [w, h, x, y] or None, "v": VERSION}
 SAMPLES = (0.1, 0.3, 0.5, 0.7, 0.9)  # where through the file to look
 SAMPLE_SECONDS = 2
 LEAST = 0.08  # bars thinner than this (of the height, or the width) are left alone: edge noise, not bars
+EVEN = 0.04  # bars are as thick on one side as the other, give or take this (of the width, or the height)
+NARROWEST = 0.6  # and leave at least this much of the width
+VERSION = 2  # a crop found before 2 (when uneven or narrow ones counted) is looked for again
 CHECK_EVERY = 600
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".mpg", ".mpeg", ".ts", ".webm", ".wmv", ".flv"}
 CROP = re.compile(r"crop=(-?\d+):(-?\d+):(-?\d+):(-?\d+)")
@@ -57,7 +60,9 @@ def _found(path):
     except OSError:
         return False
     found = _load().get(path)
-    return found["crop"] if found and found["size"] == size else False
+    if not found or found["size"] != size or found["crop"] and found.get("v") != VERSION:
+        return False
+    return found["crop"]
 
 
 def crop_filter(path):
@@ -94,6 +99,9 @@ def find(path, duration):
     w, h, x, y = sorted(boxes, key=lambda b: b[0] * b[1])[len(boxes) // 2]
     if h > height * (1 - LEAST) and w > width * (1 - LEAST):
         return None
+    # a title card's black, or a dark scene's, or a picture boxed into one corner, isn't bars
+    if abs(x - (width - w - x)) > width * EVEN or abs(y - (height - h - y)) > height * EVEN or w < width * NARROWEST:
+        return None
     return [w, h, x, y]
 
 
@@ -119,16 +127,28 @@ def scan_new_files():
                 continue
         crop = find(path, duration or 0)
         with _lock:
-            _load()[path] = {"size": os.path.getsize(path), "crop": crop}
+            was = (_load().get(path) or {}).get("crop")
+            _load()[path] = {"size": os.path.getsize(path), "crop": crop, "v": VERSION}
             done += 1
             if done % 50 == 0:
                 _save()
+        if was and was != crop:
+            _forget_inside(path)
         if crop:
             _l.info(f"bars: {os.path.basename(path)}: picture {crop[0]}x{crop[1]}")
     if done:
         with _lock:
             _save()
         _l.info(f"bars: looked at {done} files")
+
+
+def _forget_inside(path):
+    """The logos and pan and scan found inside a file's old, wrong bars are looked for again."""
+    from fs42_live import logos, panscan  # they import this module
+    for found in (logos, panscan):
+        with found._lock:
+            if found._load().pop(path, None) is not None:
+                found._save()
 
 
 def _probe_duration(path):
