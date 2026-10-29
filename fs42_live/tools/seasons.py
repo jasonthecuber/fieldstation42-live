@@ -123,6 +123,8 @@ def affected(data, folders, channels):
     names = set()
     folders = {os.path.realpath(f) for f in folders}
     for conf_file in sorted(os.listdir(f"{data}/confs")):
+        if not conf_file.endswith(".json") or not os.path.isfile(f"{data}/confs/{conf_file}"):
+            continue  # confs/off: Control Room's removed channels
         station = json.load(open(f"{data}/confs/{conf_file}")).get("station_conf", {})
         if "content_dir" not in station:
             continue
