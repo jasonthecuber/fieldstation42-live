@@ -3,6 +3,7 @@ aired, recorded along with the show. delogo smudges each one out with the pictur
 
 A logo is what stays put while everything else moves: each file is looked at once, in the background,
 in frames spread through it, for edges that are in the same place in nearly all of them, in a corner.
+Short pieces cut from one reel (ads numbered in one folder) are looked at together, a frame or two from each.
 A file not looked at yet (or whose bars haven't been found yet) plays as it is, and is queued.
 
 Control Room can tell it, for a file or a folder: leave its logos showing, or look harder (one it
@@ -13,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import subprocess
 import threading
 
@@ -141,8 +143,23 @@ def _size(path):
         return 0, 0
 
 
-def find(path, duration, crop=None, harder=False):
-    """[[x, y, w, h], ...] of the logos in a file, in its own pixels (at most one a corner), or []."""
+def _siblings(path):
+    """The pieces cut from the same reel as a file, itself included: same folder, same name but for the number."""
+    folder, (name, ext) = os.path.dirname(path), os.path.splitext(os.path.basename(path))
+    stem = re.sub(r"[\s_-]*\d+$", "", name)
+    if not stem or stem == name:
+        return [path]
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return [path]
+    piece = re.compile(re.escape(stem) + r"[\s_-]*\d+" + re.escape(ext))
+    return sorted(os.path.join(folder, n) for n in names if piece.fullmatch(n))
+
+
+def find(path, duration, crop=None, harder=False, pool=None):
+    """[[x, y, w, h], ...] of the logos in a file, in its own pixels (at most one a corner), or [].
+    pool: [(path, duration), ...] of short pieces the same size to take the frames from instead."""
     how = HARDER if harder else {"static": STATIC, "least_seconds": LEAST_SECONDS, "widest": WIDEST,
                                "widest_top": WIDEST_TOP, "corner": True}
     static_share, from_corner = how["static"], how["corner"]
@@ -152,7 +169,7 @@ def find(path, duration, crop=None, harder=False):
         widest = how["widest"] if by + bh / 2 > y0 + ph / 2 else how["widest_top"]
         return bw <= pw * widest and bh <= ph * 0.25 and (bw <= pw * WIDEST_TOP or bh >= 6)
 
-    if (duration or 0) < how["least_seconds"]:
+    if not pool and (duration or 0) < how["least_seconds"]:
         return []
     vw, vh = _size(path)
     if not vw or not vh:
@@ -161,7 +178,12 @@ def find(path, duration, crop=None, harder=False):
     # each frame's edges as 0/1 bytes, added up as one big number: a byte per pixel counts its frames
     total, usable = 0, 0
     for k in range(FRAMES):
-        f = _frame(path, duration * (0.04 + 0.92 * k / (FRAMES - 1)), w, h)
+        if pool:  # a different piece each frame: only a watermark holds still across them all
+            rounds = -(-FRAMES // len(pool))
+            p, d = pool[k % len(pool)]
+            f = _frame(p, d * (k // len(pool) + 0.5) / rounds, w, h)
+        else:
+            f = _frame(path, duration * (0.04 + 0.92 * k / (FRAMES - 1)), w, h)
         if len(f) != w * h:
             continue
         f = f.translate(EDGE)
@@ -266,9 +288,20 @@ def scan_new_files():
             continue
         with _lock:
             harder = choice(path) == "harder"
-        boxes = find(path, paths.get(path) or bars._probe_duration(path) or 0, crop, harder)
+        duration = paths.get(path) or bars._probe_duration(path) or 0
+        group, pool = [path], None
+        if duration < LEAST_SECONDS and not harder:
+            size = _size(path)
+            pieces = [p for p in _siblings(path) if _size(p) == size]
+            if len(pieces) >= 4:
+                group = pieces
+                pool = [(p, paths.get(p) or bars._probe_duration(p) or 0) for p in pieces[::-(-len(pieces) // FRAMES)]]
+        boxes = find(path, duration, crop, harder, pool)
         with _lock:
-            _load()[path] = {"size": os.path.getsize(path), "boxes": boxes, "harder": harder}
+            # the reel's other pieces get the same, unless already looked at or chosen otherwise
+            for p in group:
+                if p == path or _found(p) is False and not choice(p):
+                    _load()[p] = {"size": os.path.getsize(p), "boxes": boxes, "harder": harder}
             done += 1
             if done % 50 == 0 or path in asked:  # Control Room shows what was asked for as it's done
                 _save()
