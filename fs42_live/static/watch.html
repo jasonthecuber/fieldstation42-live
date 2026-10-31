@@ -86,6 +86,7 @@
         #menu button:focus, #menu input:focus { outline: none; border-color: #ff3; background: rgba(255,255,255,.12); }
         #menu button.on { background: #3f3; color: #000; }
         #menu button.on b { color: #000; }
+        #menu button.busy { opacity: .5; }
         #menu input { border-color: #888; background: rgba(0,0,0,.3); cursor: text; }
         #menu .note, #menu .keys { font-size: .7em; color: #ccc; margin: .5em 0 0; }
         #menu #reportMsg { color: #ff3; min-height: 1.2em; }
@@ -747,7 +748,7 @@
         const menu = document.getElementById("menu");
         const panels = [...menu.querySelectorAll(".panel")];
         const note = document.getElementById("note"), reportMsg = document.getElementById("reportMsg");
-        let openedAt = 0, openedChannel = 0, openedOd = null, pick = 0;
+        let openedAt = 0, openedChannel = 0, openedOd = null, pick = 0, sending = false;
         const odButton = document.getElementById("odButton");
         const menuOpen = () => !menu.hidden;
         const shown = () => panels.find(p => !p.hidden);
@@ -901,6 +902,8 @@
         }
         function startReport() {
             pick = 0;
+            sending = false;
+            document.getElementById("send").classList.remove("busy");
             note.value = "";
             reportMsg.textContent = "";
             document.querySelectorAll("[data-pick]").forEach(b => b.classList.remove("on"));
@@ -916,8 +919,13 @@
             (n === 5 ? note : document.getElementById("send")).focus(); // typing is optional, so the TV keyboard only opens for "something else"
         }
         async function send() {
+            if (sending) return; // a second press while it goes (or after it's saved) would send it twice
             if (!pick && !note.value.trim()) { reportMsg.textContent = "Pick what's wrong first (1 to 5)"; return; }
             if (pick === 5 && !note.value.trim()) { reportMsg.textContent = "Say what's wrong, then Send"; note.focus(); return; }
+            sending = true;
+            const button = document.getElementById("send");
+            button.classList.add("busy");
+            if (document.activeElement === note) button.focus(); // a phone's keyboard goes away, so the message shows
             reportMsg.textContent = "Sending…";
             try {
                 const r = await fetch("/live/report", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -930,6 +938,8 @@
                 setTimeout(closeMenu, 1500);
             } catch (e) {
                 reportMsg.textContent = "Couldn't send it; try again";
+                sending = false;
+                button.classList.remove("busy");
             }
         }
         menu.addEventListener("click", e => {
