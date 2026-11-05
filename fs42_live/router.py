@@ -381,6 +381,28 @@ async def greeting_page():
     return FileResponse(os.path.join(STATIC, "greeting.html"), headers={"Cache-Control": "no-cache"})
 
 
+# the greeting channel's own page, put there by the box's Control Room; without it, the station card
+GREETING_OWN = "runtime/greeting_page.html"
+
+
+@router.get("/greeting/page")
+async def greeting_own_version():
+    """{"version"}: when the greeting channel's own page last changed, or null when it has none."""
+    try:
+        return {"version": os.stat(GREETING_OWN).st_mtime_ns}
+    except OSError:
+        return {"version": None}
+
+
+@router.get("/greeting/page.html")
+async def greeting_own_page():
+    if not os.path.isfile(GREETING_OWN):
+        raise HTTPException(status_code=404, detail="The greeting channel has no page of its own.")
+    # someone's own page: sandboxed, so it can't reach the rest of the server
+    return FileResponse(GREETING_OWN, media_type="text/html",
+                        headers={"Cache-Control": "no-cache", "Content-Security-Policy": "sandbox allow-scripts"})
+
+
 @router.post("/keylog")
 async def key_log(request: Request):
     """The web player's ?keys mode: each key a remote sends, for fitting the player to a new remote."""
