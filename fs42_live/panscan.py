@@ -34,7 +34,7 @@ STORE = "runtime/panscan.json"  # realpath -> {"size": bytes, "fps": n, "shots":
 CHOICES = "runtime/panscan_choices.json"  # realpath of a file or folder -> "middle"
 MODEL = os.path.join(os.path.dirname(__file__), "models", "face_detection_yunet_2023mar.onnx")
 WIDE = 1.45  # wider than this (4:3 is 1.33) is worth following
-LEAST_SECONDS = 600  # trailers and ads aren't
+LEAST_SECONDS = 60  # a channel's shows and videos, however short (ads and bumpers aren't looked at)
 CHECK_EVERY = 600
 
 # looking (in the worker)
@@ -351,7 +351,7 @@ def _wide(path, crop):
 
 
 def scan_new_files():
-    """Looks at each long catalog video not looked at yet: the ones on channels that crop first, shortest
+    """Looks at each catalog show or video not looked at yet: the ones on channels that crop first, shortest
     first. Anything queued meanwhile (a viewer zoomed in on it) goes next."""
     paths = {}
     for station in StationManager().stations:
@@ -359,7 +359,8 @@ def scan_new_files():
             first = 0 if station.get("live_crop_to") else 1
             for entry in CatalogAPI.get_entries(station):
                 path = entry.realpath or os.path.realpath(entry.path)
-                if (entry.duration or 0) >= LEAST_SECONDS and os.path.splitext(path)[1].lower() in bars.VIDEO_EXTS:
+                if entry.content_type == "feature" and (entry.duration or 0) >= LEAST_SECONDS \
+                        and os.path.splitext(path)[1].lower() in bars.VIDEO_EXTS:
                     paths[path] = min(paths.get(path, (9, 0)), (first, entry.duration))
     order = sorted(paths, key=lambda p: paths[p], reverse=True)  # .pop() takes the first
     done = 0
