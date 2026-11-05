@@ -22,7 +22,7 @@ from fs42.sequence_api import SequenceAPI
 from fs42.station_manager import StationManager
 from fs42_live.break_finder import rebuilt, scan_new_episodes
 from fs42.catalog import ShowCatalog
-from fs42_live.catalog_watcher import STATE_DIR, MergingCatalog, media_in, refresh_changed_catalogs
+from fs42_live.catalog_watcher import STATE_DIR, MergingCatalog, media_in, refresh_changed_catalogs, update
 from fs42_live import jellyfin_guide
 
 _l = logging.getLogger("FS42LIVE")
@@ -138,6 +138,10 @@ def replan(network_name):
             raise KeyError(network_name)
         cut = _cut(station) if station.get("_has_schedule") and station["network_type"] == "standard" else None
         refresh_changed_catalogs(keep_schedules=(network_name,))
+        if _uncatalogued(station):
+            # the watcher can build it from the files before the conf naming them is in (a copy from
+            # another box), and then sees nothing new: a show on it with none of its files in the catalog
+            update(station, keep_schedule=True)
         if cut:
             threshold = datetime.datetime.now() + TRIGGER_DELTAS[(
                 manager.server_conf.get("schedule_agent") or DEFAULT_CONF)["trigger_add_at"]]
@@ -195,6 +199,19 @@ def stations_changed():
     numbers = {n for name, n in before.items() if name not in now or now[name]["channel_number"] != n}
     numbers |= {s["channel_number"] for name, s in now.items() if name not in before}
     return {"added": sorted(added), "removed": removed, "restart": sorted(numbers)}
+
+
+def _uncatalogued(station):
+    """Tags its day templates play that its catalog has nothing for, though their folders are there."""
+    tags = set()
+    for template in (station.get("day_templates") or {}).values():
+        for slot in template.values() if isinstance(template, dict) else ():
+            t = slot.get("tags") if isinstance(slot, dict) else None
+            tags.update(x for x in ([t] if isinstance(t, str) else t or []) if isinstance(x, str))
+    if not station.get("_has_catalog") or not station.get("content_dir"):
+        return set()
+    have = {e.tag for e in CatalogAPI.get_entries(station)}
+    return {t for t in tags - have if os.path.isdir(os.path.join(station["content_dir"], t))}
 
 
 def _cut(station):
