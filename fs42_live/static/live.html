@@ -166,7 +166,7 @@
             const where = document.getElementById('msgWhere');
             if (where.options.length) return;
             const option = (value, text) => { const o = document.createElement('option'); o.value = value; o.textContent = text; return o; };
-            where.append(option('greeting', 'Greeting channel (big title card)'), option('crawl:all', 'Crawl on every channel'),
+            where.append(option('greeting', 'Greeting channel (over its card or page)'), option('crawl:all', 'Crawl on every channel'),
                 ...channels.map(c => option(`crawl:${c.channel}`, `Crawl on ${c.channel} ${c.name}`)));
         }
 
