@@ -416,6 +416,14 @@ class LiquidSchedule:
 
             tag_str,tag_index = SlotReader.get_tag_from_slot(slot_config, current_mark)
 
+            # fs42_live: an hour whose tag has nothing left (all of it deleted or taken off) is off the air,
+            # not a stop - the channel shows its off-air video till something's put on
+            if tag_str is not None and tag_str not in self.conf["clip_shows"] \
+                    and not self.catalog.get_all_by_tag(tag_str) \
+                    and not ("fallback_tag" in self.conf and self.catalog.get_all_by_tag(self.conf["fallback_tag"])):
+                self._l.warning(f"[{self.conf['network_name']}] Nothing to play for tag={tag_str} at {current_mark} - off air")
+                tag_str = None
+
 
             new_block = None
             onair_flag = True
