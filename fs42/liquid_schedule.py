@@ -6,8 +6,10 @@ sys.path.append(os.getcwd())
 import logging
 import datetime
 import math
+import random
 
 from fs42.catalog import ShowCatalog, MatchingContentNotFound
+from fs42.catalog_entry import NoFillerContentFound
 from fs42.slot_reader import SlotReader
 from fs42 import timings
 from fs42.liquid_blocks import LiquidBlock, LiquidClipBlock, LiquidOffAirBlock, LiquidLoopBlock, LiquidWebBlock
@@ -160,6 +162,7 @@ class LiquidSchedule:
 
             # right here - figure out where we are in the hour so we know if we should use start_bump
             break_info, break_strategy, increment = self._break_info(slot_config, tag_str, candidate.path, first_in_slot)
+            self._bump_between(break_info, increment, current_mark)
 
             target_duration = self._calc_target_duration(candidate.duration, increment, break_info, break_strategy)
             next_mark = current_mark + datetime.timedelta(seconds=target_duration)
@@ -192,6 +195,7 @@ class LiquidSchedule:
             )
         else:
             break_info, break_strategy, schedule_increment = self._break_info(slot_config, tag_str, clip_content[0].path)
+            self._bump_between(break_info, schedule_increment, current_mark)
             clip_block = LiquidClipBlock(clip_content, current_mark, timings.HOUR, tag_str, break_strategy, break_info)
             if schedule_increment:
                 duration = clip_config.get("total_duration")
@@ -246,6 +250,21 @@ class LiquidSchedule:
                 increment = override.get("schedule_increment", increment)
 
         return (break_info, break_strategy, increment)
+
+    def _bump_between(self, break_info, increment, when):
+        # commercial free with no schedule increment leaves no gap to fill, so nothing would separate
+        # the shows: end each with one of the channel's bumpers (bumps_between_shows: false for none).
+        # With no break for it to start or end, a pre or post bump will do as well as any other
+        if (not self.conf.get("commercial_free") or increment or break_info["end_bump"]
+                or not self.conf.get("bumps_between_shows", True)):
+            return
+        for position in random.sample([None, ShowCatalog.prebump, ShowCatalog.postbump], 3):
+            try:
+                bump = self.catalog.find_bump(timings.HOUR, when, position, break_info["bump_dir"])
+            except (MatchingContentNotFound, NoFillerContentFound):
+                continue
+            break_info["end_bump"] = {"path": bump.path, "duration": bump.duration}
+            return
 
     @staticmethod
     def _get_block_tag(block):
