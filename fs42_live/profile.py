@@ -23,13 +23,13 @@ class OutputProfile:
         # An overlay (captions) is drawn on the finished frame. With crop_to (a station's
         # `live_crop_to`, e.g. "16:9"), a picture wider than that loses its sides down to it
         # first, as TV's pan and scan did: "4:3" fills the screen, "14:9" or "16:9" keep thin bars.
-        # `bars` (bars.crop_filter) cuts off black bars made part of the picture before that.
+        # `bars` (bars.crop_filter) cuts off black bars made part of the picture before any of that.
         # `logos` (logos.logo_filter) smudges out channel logos, in the file's own pixels, so first of all.
         # `pan` (panscan.pan_filter) moves that crop to follow the action, instead of keeping the middle.
         w, h = self.width, self.height
         aspect = _aspect(crop_to)
         return (
-            logos + (bars if aspect else "") + "scale=trunc(iw*sar/2)*2:ih,setsar=1,"
+            logos + bars + "scale=trunc(iw*sar/2)*2:ih,setsar=1,"
             + (f"{pan}crop@pan=w='min(iw,trunc(ih*{aspect:.4f}/2)*2)':h=ih," if aspect else "") +
             f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"

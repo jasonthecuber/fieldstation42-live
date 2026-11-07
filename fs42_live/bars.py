@@ -1,6 +1,7 @@
 """Black bars made part of the picture: a widescreen music video put out as 4:3 with the letterbox in it,
-say. Zoom crops a picture's sides down to a shape, which does nothing to one already 4:3, so its bars are
-cut off first and the picture inside zooms like any widescreen one.
+say, or a 4:3 show put out as 16:9 with bars at its sides. They're cut off before anything else, so a 4:3
+picture fills the 4:3 screen instead of sitting small in the middle of it, and a widescreen one zooms
+like any other (zoom crops a picture's sides down to a shape, which does nothing to one already 4:3).
 
 Each video file's bars are found once, in the background, from a few short samples through it. A file
 not looked at yet plays as it is, and is queued.
@@ -25,7 +26,8 @@ SAMPLE_SECONDS = 2
 LEAST = 0.08  # bars thinner than this (of the height, or the width) are left alone: edge noise, not bars
 EVEN = 0.04  # bars are as thick on one side as the other, give or take this (of the width, or the height)
 NARROWEST = 0.6  # and leave at least this much of the width
-VERSION = 2  # a crop found before 2 (when uneven or narrow ones counted) is looked for again
+VERSION = 3  # a crop found before 2 (when uneven or narrow ones counted) is looked for again, and so is
+# none found before 3 (when a logo on one of the bars hid them)
 CHECK_EVERY = 600
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".mpg", ".mpeg", ".ts", ".webm", ".wmv", ".flv"}
 CROP = re.compile(r"crop=(-?\d+):(-?\d+):(-?\d+):(-?\d+)")
@@ -60,7 +62,7 @@ def _found(path):
     except OSError:
         return False
     found = _load().get(path)
-    if not found or found["size"] != size or found["crop"] and found.get("v") != VERSION:
+    if not found or found["size"] != size or found.get("v", 1) < (2 if found["crop"] else 3):
         return False
     return found["crop"]
 
@@ -87,7 +89,7 @@ def find(path, duration):
              "-t", str(SAMPLE_SECONDS), "-an", "-sn", "-dn", "-vf", "cropdetect=limit=24:round=2:reset=0",
              "-f", "null", "-"],
             capture_output=True, text=True).stderr
-        size = size or re.search(r"Video: .*?, (\d{2,5})x(\d{2,5})", log)
+        size = size or re.search(r"Video: .*?, (\d{2,5})x(\d{2,5})(?: \[SAR (\d+):(\d+))?", log)
         found = CROP.findall(log)
         if found:
             w, h, x, y = map(int, found[-1])
@@ -99,6 +101,11 @@ def find(path, duration):
     w, h, x, y = sorted(boxes, key=lambda b: b[0] * b[1])[len(boxes) // 2]
     if h > height * (1 - LEAST) and w > width * (1 - LEAST):
         return None
+    # a logo on one of a 4:3 picture's side bars (Sesame Street's uploads) stretches the picture found
+    # over to it: the other side's bar, as thick on both, leaves the 4:3 picture
+    side, sar = max(x, width - w - x), int(size[3] or 1) / int(size[4] or 1)
+    if h > height * (1 - LEAST) and abs((width - 2 * side) * sar / h - 4 / 3) < 0.03:
+        w, x = width - 2 * side, side
     # a title card's black, or a dark scene's, or a picture boxed into one corner, isn't bars
     if abs(x - (width - w - x)) > width * EVEN or abs(y - (height - h - y)) > height * EVEN or w < width * NARROWEST:
         return None
@@ -127,12 +134,13 @@ def scan_new_files():
                 continue
         crop = find(path, duration or 0)
         with _lock:
+            had = path in _load()
             was = (_load().get(path) or {}).get("crop")
             _load()[path] = {"size": os.path.getsize(path), "crop": crop, "v": VERSION}
             done += 1
             if done % 50 == 0:
                 _save()
-        if was and was != crop:
+        if had and was != crop:
             _forget_inside(path)
         if crop:
             _l.info(f"bars: {os.path.basename(path)}: picture {crop[0]}x{crop[1]}")
