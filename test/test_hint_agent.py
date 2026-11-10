@@ -134,3 +134,37 @@ class TestHintAgent:
         # rejected, so the tag ends up unrestricted
         hints = [{"tags": [SPECIAL], "not_a_hint": "whatever"}]
         assert self._filter(hints, datetime(2026, 3, 1, 12)) == BOTH
+
+    def test_day_of_week_takes_several_days(self):
+        # fs42_live: Media's Days... keeps a show to some days of the week (#71)
+        hints = [{"tags": [SPECIAL], "day_of_week": ["saturday", "Sunday"]}]
+        # Mar 7 2026 is a Saturday
+        assert self._filter(hints, datetime(2026, 3, 7, 12)) == BOTH
+        assert self._filter(hints, datetime(2026, 3, 8, 12)) == BOTH
+        assert self._filter(hints, datetime(2026, 3, 9, 12)) == GENERAL_ONLY
+
+
+class TestHintedOut:
+    # fs42_live: a tag whose videos are all kept to other days has nothing to play today
+    def _schedule(self, meta_hints, entries):
+        from fs42.liquid_schedule import LiquidSchedule
+        schedule = LiquidSchedule.__new__(LiquidSchedule)
+        schedule.conf = {"meta_hints": meta_hints, "clip_shows": []}
+        schedule.catalog = type("Catalog", (), {"get_all_by_tag": lambda self, tag: entries.get(tag)})()
+        return schedule
+
+    def _entries(self):
+        return {"mix": [CatalogEntry(f"{SPECIAL}/one.mp4", 30, "mix"), CatalogEntry(f"{GENERAL}/two.mp4", 30, "mix")],
+                "special": [CatalogEntry(f"{SPECIAL}/one.mp4", 30, "special")]}
+
+    def test_a_tag_kept_to_saturdays(self):
+        schedule = self._schedule([{"tags": [SPECIAL], "day_of_week": ["saturday"]}], self._entries())
+        assert schedule._hinted_out("special", datetime(2026, 3, 9, 12))
+        assert not schedule._hinted_out("special", datetime(2026, 3, 7, 12))
+        # the rest of a tag still plays
+        assert not schedule._hinted_out("mix", datetime(2026, 3, 9, 12))
+
+    def test_no_hints_or_nothing_there_is_not_hinted_out(self):
+        assert not self._schedule([], self._entries())._hinted_out("special", datetime(2026, 3, 9, 12))
+        schedule = self._schedule([{"tags": [SPECIAL], "day_of_week": ["saturday"]}], self._entries())
+        assert not schedule._hinted_out("gone", datetime(2026, 3, 9, 12))

@@ -19,11 +19,15 @@ class TemporalHint:
 
 class DayofWeekHint:
     def __init__(self, day_name):
-        self.day_name = str(day_name).strip().lower()
-        if self.day_name not in timings.DAYS:
-            raise ValueError(
-                f"Day of week not valid: {day_name!r} - should be one of: {', '.join(timings.DAYS)}"
-            )
+        # fs42_live: a meta hint may give several days, ["saturday", "sunday"]
+        days = day_name if isinstance(day_name, (list, tuple)) else [day_name]
+        self.days = [str(d).strip().lower() for d in days]
+        for d in self.days:
+            if d not in timings.DAYS:
+                raise ValueError(
+                    f"Day of week not valid: {d!r} - should be one of: {', '.join(timings.DAYS)}"
+                )
+        self.day_name = self.days[0]
         self.type = "day_of_week"
 
     @staticmethod
@@ -31,7 +35,7 @@ class DayofWeekHint:
         return to_test in timings.DAYS
 
     def hint(self, when):
-        return  when.strftime("%A").lower() == self.day_name
+        return when.strftime("%A").lower() in self.days
 
     
     def toJSON(self):

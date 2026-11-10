@@ -21,6 +21,7 @@ from fs42.path_query import PathQuery
 from fs42.station_manager import StationManager
 from fs42.liquid_io import LiquidIO
 from fs42.autobump_agent import AutoBumpAgent
+from fs42.hint_agent import HintAgent
 
 # logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s:%(message)s", level=logging.INFO)
 
@@ -306,6 +307,14 @@ class LiquidSchedule:
             tags.add(ft)
         return tags
 
+    def _hinted_out(self, tag, when):
+        """fs42_live: true when the tag has videos but meta_hints allow none of them at this time."""
+        hints = self.conf.get("meta_hints")
+        if not hints or tag in self.conf["clip_shows"]:
+            return False
+        entries = self.catalog.get_all_by_tag(tag)
+        return bool(entries) and not HintAgent.filter_candidate_entries(when, entries, hints)
+
     def _build_exclusion_index(self, start_time, end_target):
         """Build an in-memory exclusion index from sibling channels that share
         the same content_dir AND have overlapping tags (i.e. they can actually
@@ -434,6 +443,18 @@ class LiquidSchedule:
                 slot_number = this_slot_number
 
             tag_str,tag_index = SlotReader.get_tag_from_slot(slot_config, current_mark)
+
+            # fs42_live: a tag whose every video is kept to other days (meta_hints) has nothing today -
+            # a random slot picks another of its tags, otherwise the hour is off the air
+            if tag_str is not None and "sequence" not in slot_config and self._hinted_out(tag_str, current_mark):
+                tags = slot_config["tags"] if slot_config.get("random_tags") and isinstance(slot_config["tags"], list) else []
+                others = [i for i, t in enumerate(tags) if not self._hinted_out(t, current_mark)]
+                if others:
+                    tag_index = random.choice(others)
+                    tag_str = slot_config["tags"][tag_index]
+                else:
+                    self._l.warning(f"[{self.conf['network_name']}] Nothing allowed today for tag={tag_str} at {current_mark} - off air")
+                    tag_str = None
 
             # fs42_live: an hour whose tag has nothing left (all of it deleted or taken off) is off the air,
             # not a stop - the channel shows its off-air video till something's put on

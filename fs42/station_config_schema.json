@@ -499,8 +499,11 @@
           "pattern": "^[Qq][1-4]$"
         },
         "day_of_week": {
-          "type": "string",
-          "description": "Weekday name (e.g., 'friday'). Case insensitive here, unlike a weekday folder name. Content under the tag(s) is only eligible on that day."
+          "oneOf": [
+            {"type": "string"},
+            {"type": "array", "items": {"type": "string"}, "minItems": 1}
+          ],
+          "description": "Weekday name (e.g., 'friday'), or a list of them (['saturday', 'sunday']). Case insensitive here, unlike a weekday folder name. Content under the tag(s) is only eligible on those days."
         },
         "week_number": {
           "oneOf": [

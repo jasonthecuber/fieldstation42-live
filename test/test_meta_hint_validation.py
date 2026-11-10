@@ -39,6 +39,7 @@ class TestMetaHintFieldValidation:
             {"tags": "f", "month": "October"},
             {"tags": "g", "quarter": "Q4"},
             {"tags": "h", "day_of_week": "friday"},
+            {"tags": "i", "day_of_week": ["saturday", "sunday"]},
         ], tmp_path)
 
     def test_unknown_field_is_rejected(self, tmp_path):
