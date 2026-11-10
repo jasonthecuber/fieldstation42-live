@@ -21,7 +21,10 @@ YEAR = re.compile(r"\s*\((\d{4})\)$")
 
 
 def wanted(station, path):
-    return any(f"/{tag}/" in path for tag in station.get("live_captions", []))
+    """Only the clip folders themselves, right under the station's content_dir: its bump/ and commercial/ can sit
+    beside them, under a folder of the same name ("catalog/music_videos/bump")."""
+    root, path = station.get("content_dir", "").strip("/"), "/" + path.lstrip("/")
+    return any(f"/{root}/{tag}/" in path for tag in station.get("live_captions", []))
 
 
 def parse(path):
