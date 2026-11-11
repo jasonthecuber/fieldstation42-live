@@ -883,6 +883,23 @@ class ShowCatalog:
                 # No suitable end clip even though one was requested
                 raise e
 
+        # fs42_live: with clips_per_break, as many clips as leave a break_duration break after each group of them (#73)
+        per_break = self.config.get("clips_per_break")
+        if per_break and break_duration and break_strategy == "standard":
+            while True:
+                room = duration - current_duration - math.ceil((len(clips) + 1) / per_break) * break_duration
+                try:
+                    candidate = self.find_candidate(tag, room, when, avoid_recent=True) if room > 0 else None
+                except MatchingContentNotFound:
+                    candidate = None
+                if not candidate:
+                    break
+                current_duration += candidate.duration
+                clips.append(candidate)
+            if not clips:
+                raise MatchingContentNotFound(f"No content found for tag '{tag}' with duration {duration:.1f}s")
+            keep_going = False
+
         while keep_going:
             try:
                 # if it is a small or negative number, this will throw an exception when a candidate isn't found

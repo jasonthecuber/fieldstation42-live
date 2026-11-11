@@ -1,4 +1,5 @@
 import datetime
+import math
 import os.path
 import random
 
@@ -248,6 +249,11 @@ class LiquidClipBlock(LiquidBlock):
             # calculate how many breaks we want based on total buffer time and break_duration
             strict_count = max(1, int(diff / break_duration))
 
+        # fs42_live: a station's clips_per_break plays that many clips between breaks (MTV: a few videos, then a break)
+        per_break = catalog.config.get("clips_per_break")
+        if per_break and diff > 2:
+            strict_count = math.ceil(len(self.content) / per_break)
+
         self.reel_blocks = None
         if diff < -2:
             err = f"Schedule logic error: duration requested {self.playback_duration()} is less than content {self.content_duration()}"
@@ -264,7 +270,7 @@ class LiquidClipBlock(LiquidBlock):
             self.reel_blocks = []
 
         self.plan = ReelCutter.cut_reels_into_clips(
-            self.content, self.reel_blocks, self.break_strategy, self.start_bump, self.end_bump
+            self.content, self.reel_blocks, self.break_strategy, self.start_bump, self.end_bump, per_break
         )
 
 class LiquidWebBlock(LiquidBlock):

@@ -1,3 +1,5 @@
+import math
+
 from fs42.block_plan import BlockPlanEntry
 from fs42.media_processor import MediaProcessor
 
@@ -76,7 +78,7 @@ class ReelCutter:
 
 
     @staticmethod
-    def cut_reels_into_clips(clips, reel_blocks, break_stategy, start_bump, end_bump):
+    def cut_reels_into_clips(clips, reel_blocks, break_stategy, start_bump, end_bump, per_break=None):
         entries = []
 
         if start_bump:
@@ -87,7 +89,17 @@ class ReelCutter:
         else:
             break_count = 0
 
-        if break_count <= 1 or break_stategy == "end":
+        if per_break and break_count and break_stategy == "standard":
+            # fs42_live: groups of at most per_break clips, as even as they go, a break after each (the last at the end)
+            groups = math.ceil(len(clips) / per_break)
+            ends = {round((g + 1) * len(clips) / groups) for g in range(groups - 1)}
+            for i, clip in enumerate(clips):
+                entries.append(BlockPlanEntry(clip.path, 0, clip.duration, content_type=clip.content_type, media_type=clip.media_type))
+                if i + 1 in ends and reel_blocks:
+                    entries += reel_blocks.pop(0).make_plan()
+            while reel_blocks:
+                entries += reel_blocks.pop(0).make_plan()
+        elif break_count <= 1 or break_stategy == "end":
             # then don't cut the base at all
             for clip in clips:
                 entries.append(BlockPlanEntry(clip.path, 0, clip.duration, content_type=clip.content_type, media_type=clip.media_type))
