@@ -24,6 +24,7 @@ from fs42.fluid_statements import FluidStatements
 from fs42.liquid_api import LiquidAPI
 from fs42.media_processor import MediaProcessor
 from fs42.station_manager import StationManager
+from fs42_live.catalog_watcher import follow_moves
 
 _l = logging.getLogger("FS42LIVE")
 
@@ -41,18 +42,22 @@ PENDING = "runtime/break_finder_rebuild.json"  # stations whose schedules still 
 def scan_new_episodes():
     """Finds breaks in each episode not scanned yet. Returns the stations to rebuild: those
     whose built schedule plays any of those episodes later on, so it was planned without them.
-    They're kept on disk until rebuilt, since a scan takes hours and the server may restart."""
+    They're kept on disk until rebuilt, since a scan takes hours and the server may restart.
+    A station is returned as soon as its own episodes are done, and the stations with the
+    fewest left go first, so a big new show on one channel doesn't hold up the rest for days."""
     fluid = FluidBuilder()
     pending = _pending()
-    for station in StationManager().stations:
-        if not station.get("_has_catalog"):
-            continue
-        for entry in CatalogAPI.get_entries(station):
-            if entry.content_type != "feature" or entry.duration < SHORTEST_EPISODE:
-                continue
+    stations = [s for s in StationManager().stations if s.get("_has_catalog")]
+    for station in stations:
+        follow_moves(station)
+    todo = {s["network_name"]: [e for e in CatalogAPI.get_entries(s)
+                                if e.content_type == "feature" and e.duration >= SHORTEST_EPISODE
+                                and not is_scanned(fluid, e.realpath or os.path.realpath(e.path))]
+            for s in stations}
+    for station in sorted(stations, key=lambda s: len(todo[s["network_name"]])):
+        name = station["network_name"]
+        for entry in todo[name]:
             path = entry.realpath or os.path.realpath(entry.path)
-            if is_scanned(fluid, path):
-                continue
             try:
                 points = find_breaks(path, entry.duration)
             except (OSError, subprocess.CalledProcessError) as e:
@@ -63,11 +68,12 @@ def scan_new_episodes():
             else:
                 _l.info(f"break finder: {entry.title}: no clear act breaks; keeping evenly spaced ones")
             store(fluid, path, as_segments(points, entry.duration))
-            name = station["network_name"]
             if name not in pending and station.get("_has_schedule") and plays_later(station, {path}):
                 pending.add(name)
                 _save_pending(pending)
-    return [s for s in StationManager().stations if s["network_name"] in pending]
+        if name in pending:
+            return [station]
+    return []
 
 
 def rebuilt(stations):

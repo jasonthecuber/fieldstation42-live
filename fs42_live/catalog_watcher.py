@@ -48,12 +48,20 @@ def refresh_changed_catalogs(keep_schedules=()):
                 continue
             added, gone = len(now - before), len(before - now)
             _l.info(f"catalog watcher: {name} has {added} new and {gone} removed files; updating its catalog")
-            update(station, keep_schedule=not gone or name in keep_schedules)
+            update(station, keep_schedule=not shows_gone(station, before - now) or name in keep_schedules)
             changed = True
         os.makedirs(STATE_DIR, exist_ok=True)
         with open(state, "w") as f:
             json.dump(sorted(now), f)
     return changed
+
+
+def shows_gone(station, gone):
+    """Whether any of the files gone are episodes or movies the schedule may play. Commercials and
+    bumpers gone don't need the schedule rebuilt (and deleting a shared folder of them would rebuild
+    every channel at once): the streams play others of the channel's in their place."""
+    paths = {g.split("|")[0] for g in gone}
+    return any(e.content_type == "feature" and e.path in paths for e in CatalogAPI.get_entries(station))
 
 
 def folders_emptied(content_dir, before, now):
@@ -76,6 +84,27 @@ def media_in(content_dir):
                 except OSError:
                     pass
     return found
+
+
+def follow_moves(station):
+    """When a show's folder moves and its link in the channel is pointed at the new place, the
+    files' names in the channel stay the same, so nothing looks changed. But the catalog keeps
+    each file's real path, and found breaks are stored and looked up by it: bring it up to date,
+    taking the breaks along. Returns how many files had moved."""
+    moved = []
+    for e in CatalogAPI.get_entries(station):
+        now = os.path.realpath(e.path)
+        if e.realpath and now != e.realpath and os.path.exists(now):
+            moved.append((e.dbid, e.realpath, now))
+    if moved:
+        with CatalogIO()._get_connection() as db:
+            for dbid, old, now in moved:
+                db.execute("UPDATE catalog_entries SET realpath = ? WHERE id = ?", (now, dbid))
+                for table in ("break_points", "chapter_points"):
+                    db.execute(f"INSERT OR IGNORE INTO {table} SELECT ?, points, last_updated FROM {table} WHERE path = ?",
+                               (now, old))
+        _l.info(f"catalog watcher: {station['network_name']}: {len(moved)} files have moved; following them")
+    return len(moved)
 
 
 def update(station, keep_schedule):

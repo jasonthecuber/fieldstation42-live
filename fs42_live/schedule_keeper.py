@@ -29,6 +29,7 @@ _l = logging.getLogger("FS42LIVE")
 
 CHECK_EVERY = 3600  # seconds
 SOON_AT_MOST_EVERY = 60  # seconds between catch-ups asked for by streams
+ON_AIR_FIRST = datetime.timedelta(hours=2)  # a schedule ending sooner than this gets a day before others are filled out
 # Keep at least a week built, so the guide (XMLTV) always has days of listings
 DEFAULT_CONF = {"trigger_add_at": "week", "amount_to_add": "week"}
 TRIGGER_DELTAS = {
@@ -241,31 +242,64 @@ def _cut(station):
 
 def extend_if_needed():
     conf = StationManager().server_conf.get("schedule_agent") or DEFAULT_CONF
-    threshold = datetime.datetime.now() + TRIGGER_DELTAS[conf["trigger_add_at"]]
+    now = datetime.datetime.now()
+    threshold = now + TRIGGER_DELTAS[conf["trigger_add_at"]]
     liquid = LiquidManager()
     extended = False
+    short = []
     for station in StationManager().stations:
         if not station.get("_has_schedule"):
             continue
-        name = station["network_name"]
         try:
-            _, end = liquid.get_extents(name)
+            _, end = liquid.get_extents(station["network_name"])
         except ValueError:
             continue
-        # a fresh schedule only runs to the next Monday, so it can take two adds
-        for _ in range(3):
-            if end is not None and end >= threshold:
-                break
-            _l.info(f"schedule keeper: {name} schedule ends {end}; adding a {conf['amount_to_add']}")
-            LiquidSchedule(station).add_amount(conf["amount_to_add"])
-            end = LiquidAPI.get_blocks(station)[-1].end_time
-            extended = True
-    if extended:
-        reload_without_gap(liquid)
-        for station in StationManager().stations:
-            if station.get("_has_schedule"):
-                name = station["network_name"]
-                _l.info(f"schedule keeper: {name} now runs to {liquid.get_extents(name)[1]}")
+        if end is None or end < threshold:
+            short.append((station, end))
+    try:
+        # first, a day for each channel with nothing (or hardly anything) left to play, put on the air
+        # as soon as it's built: many rebuilt at once take minutes each, and the rest would show standby
+        # until the last was done
+        for station, end in short:
+            if end is not None and end >= now + ON_AIR_FIRST:
+                continue
+            name = station["network_name"]
+            try:
+                _l.info(f"schedule keeper: {name} has nothing on soon; planning a day of it first")
+                extended = True
+                LiquidSchedule(station).add_amount("day")
+                liquid.schedules[name] = LiquidAPI.get_blocks(station)
+            except Exception:
+                _l.exception(f"schedule keeper: can't plan {name}; going on to the rest")
+        # then each filled out to the full amount
+        for station, _ in short:
+            name = station["network_name"]
+            try:
+                _, end = liquid.get_extents(name)
+            except ValueError:
+                continue
+            try:
+                # a fresh schedule only runs to the next Monday, so it can take two adds
+                for _ in range(3):
+                    if end is not None and end >= threshold:
+                        break
+                    _l.info(f"schedule keeper: {name} schedule ends {end}; adding a {conf['amount_to_add']}")
+                    extended = True
+                    LiquidSchedule(station).add_amount(conf["amount_to_add"])
+                    end = LiquidAPI.get_blocks(station)[-1].end_time
+            except Exception:
+                # one channel that can't be planned mustn't leave the ones after it unplanned
+                _l.exception(f"schedule keeper: can't plan {name}; going on to the rest")
+    finally:
+        if extended:  # what was planned plays, even if something after it failed
+            reload_without_gap(liquid)
+            for station in StationManager().stations:
+                if station.get("_has_schedule"):
+                    name = station["network_name"]
+                    try:
+                        _l.info(f"schedule keeper: {name} now runs to {liquid.get_extents(name)[1]}")
+                    except ValueError:
+                        pass
 
 
 def reload_without_gap(liquid):

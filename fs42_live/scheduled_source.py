@@ -2,10 +2,12 @@ import asyncio
 import datetime
 import logging
 import os
+import random
 import time
 from asyncio.subprocess import DEVNULL, PIPE
 from dataclasses import dataclass
 
+from fs42.catalog_api import CatalogAPI
 from fs42.liquid_manager import LiquidManager
 from fs42_live import bars, captions, hwaccel, logos, loudness, messages, panscan
 from fs42_live.profile import RETRO
@@ -133,13 +135,35 @@ class ScheduledSource:
             _l.warning(f"{self.network}: stream entries are not supported yet; showing standby")
             return self._slate(SLATE_SECONDS)
         if not os.path.exists(entry.path):
+            refresh_soon()
+            left = entry.duration - pp.offset
+            stand_in = self._stand_in(entry, left)
+            if stand_in:
+                # a commercial or bumper deleted: another of the channel's fills its time, so the break
+                # keeps its length and the show comes back on time
+                _l.info(f"{self.network}: {entry.path} is missing; playing {stand_in.path} in its place")
+                return Segment(stand_in.path, 0, min(left, stand_in.duration))
             # deleted (or its drive is gone); the catalog watcher catches up, then the
             # schedule moves on. Until then, short slates so it switches over quickly
             _l.warning(f"{self.network}: {entry.path} is missing; showing standby")
-            refresh_soon()
-            return self._slate(min(SLATE_SECONDS, entry.duration - pp.offset))
+            return self._slate(min(SLATE_SECONDS, left))
         offset = max(0.0, pp.offset - NUDGE.total_seconds())
         return Segment(entry.path, entry.skip + offset, entry.duration - offset)
+
+    def _stand_in(self, entry, seconds):
+        """Another of the channel's commercials (or bumpers, for a bumper) to play in a missing one's
+        place: one at least as long, so it fills the time, or else the longest, and another after it."""
+        if getattr(entry, "content_type", None) not in ("commercial", "bump"):
+            return None
+        try:
+            have = [e for e in CatalogAPI.get_entries(self.station)
+                    if e.content_type == entry.content_type and e.duration >= 1 and os.path.exists(e.path)]
+        except Exception:
+            return None
+        if not have:
+            return None
+        long_enough = [e for e in have if e.duration >= seconds]
+        return random.choice(long_enough) if long_enough else max(have, key=lambda e: e.duration)
 
     def _slate(self, seconds):
         image = self.station.get("standby_image", "runtime/standby.png")

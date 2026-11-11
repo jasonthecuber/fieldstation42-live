@@ -692,6 +692,15 @@ class ShowCatalog:
             raise NoFillerContentFound(f"Can't find filler content in {com_tag} - please add commercials.")
         return self.find_candidate(com_tag, seconds, when)
 
+    def _bump_or_none(self, seconds, when, position, bump_dir, lookahead):
+        # fs42_live: a channel whose bumpers were all taken off (or that has only a "Feature Presentation"
+        # post bumper, wrong for the middle of a break) plays its breaks without one, rather than failing
+        # to plan at all
+        try:
+            return self.find_bump(seconds, when, position, bump_tag=bump_dir, lookahead=lookahead)
+        except NoFillerContentFound:
+            return None
+
     # makes blocks of reels in bump-commercial-commercial-bump format
     def make_reel_block(self, when, bumpers=True, target_duration=120, commercial_dir=None, bump_dir=None,
                         lookahead=None):
@@ -709,10 +718,8 @@ class ShowCatalog:
         # INSERT AUTO BUMPER LOGIC HERE
         if bumpers:
             if "autobump" not in self.config:
-                start_candidate = self.find_bump(target_duration, when, ShowCatalog.prebump, bump_tag=bump_dir,
-                                                 lookahead=lookahead)
-                end_candidate = self.find_bump(target_duration, when, ShowCatalog.postbump, bump_tag=bump_dir,
-                                               lookahead=lookahead)
+                start_candidate = self._bump_or_none(target_duration, when, ShowCatalog.prebump, bump_dir, lookahead)
+                end_candidate = self._bump_or_none(target_duration, when, ShowCatalog.postbump, bump_dir, lookahead)
             else:
                 # then what kind of autobumps?
                 autoconf = self.config["autobump"]
@@ -726,21 +733,21 @@ class ShowCatalog:
                 end_candidate = autos.get("next_bump", None)
 
                 if strategy == "start":
-                    end_candidate = self.find_bump(target_duration, when, ShowCatalog.postbump, bump_tag=bump_dir,
-                                                   lookahead=lookahead)
+                    end_candidate = self._bump_or_none(target_duration, when, ShowCatalog.postbump, bump_dir, lookahead)
                 elif strategy == "end":
-                    start_candidate = self.find_bump(target_duration, when, ShowCatalog.prebump, bump_tag=bump_dir,
-                                                     lookahead=lookahead)
+                    start_candidate = self._bump_or_none(target_duration, when, ShowCatalog.prebump, bump_dir, lookahead)
 
-            remaining -= start_candidate.duration
-            remaining -= end_candidate.duration
+            remaining -= start_candidate.duration if start_candidate else 0
+            remaining -= end_candidate.duration if end_candidate else 0
 
         # aim for lower and should average close over time since the returned can be larger
         while remaining > (target_duration * 0.1):
             if not self.config["commercial_free"]:
                 candidate = self.find_commercial(target_duration, when, commercial_dir)
             else:
-                candidate = self.find_bump(target_duration, when, None, bump_dir, lookahead=lookahead)
+                candidate = self._bump_or_none(target_duration, when, None, bump_dir, lookahead)
+                if candidate is None:
+                    break
             remaining -= candidate.duration
             reels.append(candidate)
 
@@ -817,7 +824,7 @@ class ShowCatalog:
                         candidate = self.find_commercial(seconds=remaining, when=when, commercial_dir=commercial_dir)
                     else:
                         candidate = self.find_bump(remaining, when, "fill", bump_tag=bump_dir)
-                except MatchingContentNotFound:
+                except (MatchingContentNotFound, NoFillerContentFound):
                     if remaining > self.min_gap:
                         self._l.debug(
                             f"Could not find matching content for {remaining} seconds - will attempt to fill with BRB"
