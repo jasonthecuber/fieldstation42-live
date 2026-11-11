@@ -110,6 +110,7 @@ class LiquidSchedule:
         candidate = None
         new_block = None
         next_mark = None
+        new_show_block = None  # fs42_live: with live_show_blocks, whether this starts a show's block
         # see if this is a series with a sequence defined
         if "sequence" in slot_config:
             seq_name = slot_config["sequence"]
@@ -128,6 +129,8 @@ class LiquidSchedule:
                 candidate = self.catalog.entry_by_fpath(next_seq.fpath)
 
             seq_key = SequenceAPI.make_sequence_key(self.conf, seq_name, tag_str)
+        elif self.conf.get("live_show_blocks"):  # fs42_live
+            candidate, new_show_block = self._block_candidate(tag_str, current_mark)
         else:
             try:
                 candidate = self.catalog.find_candidate(
@@ -163,7 +166,10 @@ class LiquidSchedule:
 
             # right here - figure out where we are in the hour so we know if we should use start_bump
             break_info, break_strategy, increment = self._break_info(slot_config, tag_str, candidate.path, first_in_slot)
-            self._bump_between(break_info, increment, current_mark)
+            if new_show_block is None:
+                self._bump_between(break_info, increment, current_mark)
+            elif new_show_block:  # one bumper as each show's block starts, none between its videos
+                self._bump_between(break_info, increment, current_mark, "start_bump")
 
             target_duration = self._calc_target_duration(candidate.duration, increment, break_info, break_strategy)
             next_mark = current_mark + datetime.timedelta(seconds=target_duration)
@@ -252,11 +258,11 @@ class LiquidSchedule:
 
         return (break_info, break_strategy, increment)
 
-    def _bump_between(self, break_info, increment, when):
+    def _bump_between(self, break_info, increment, when, where="end_bump"):
         # commercial free with no schedule increment leaves no gap to fill, so nothing would separate
         # the shows: end each with one of the channel's bumpers (bumps_between_shows: false for none).
         # With no break for it to start or end, a pre or post bump will do as well as any other
-        if (not self.conf.get("commercial_free") or increment or break_info["end_bump"]
+        if (not self.conf.get("commercial_free") or increment or break_info[where]
                 or not self.conf.get("bumps_between_shows", True)):
             return
         for position in random.sample([None, ShowCatalog.prebump, ShowCatalog.postbump], 3):
@@ -264,8 +270,65 @@ class LiquidSchedule:
                 bump = self.catalog.find_bump(timings.HOUR, when, position, break_info["bump_dir"])
             except (MatchingContentNotFound, NoFillerContentFound):
                 continue
-            break_info["end_bump"] = {"path": bump.path, "duration": bump.duration}
+            break_info[where] = {"path": bump.path, "duration": bump.duration}
             return
+
+    # fs42_live: live_show_blocks (minutes, e.g. 30): a tag's videos play by show - the folder each is in under
+    # the tag's, as a YouTube channel's videos are - one show at a time, till the first whole block of the clock
+    # at least two thirds of a block on (10:00 -> 10:30, 10:20 -> 11:00), then the show played longest ago. Videos
+    # loose in the tag's folder are a show of their own. A video longer than what's left starts the next block (#74)
+    def _block_candidate(self, tag_str, current_mark):
+        shows = self._block_shows(tag_str)
+        block = getattr(self, "_show_block", None)
+        if block and block["tag"] == tag_str and current_mark < block["end"]:
+            room = (block["end"] - current_mark).total_seconds()
+            candidate = self._find_in_show(tag_str, block["show"], room, current_mark)
+            if candidate:
+                return candidate, False
+        last = self._shows_last(tag_str)
+        for show in sorted(shows, key=lambda s: (last.get(s, datetime.datetime.min), s)):
+            candidate = self._find_in_show(tag_str, show, timings.HOUR * 23, current_mark)
+            if candidate:
+                break
+        else:
+            raise MatchingContentNotFound(f"No content found for tag '{tag_str}'")
+        step = self.conf["live_show_blocks"] * 60
+        soonest = current_mark + datetime.timedelta(seconds=step * 2 / 3)
+        midnight = soonest.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = midnight + datetime.timedelta(seconds=math.ceil((soonest - midnight).total_seconds() / step) * step)
+        self._show_block = {"tag": tag_str, "show": show, "end": end}
+        last[show] = current_mark
+        return candidate, True
+
+    def _show_of(self, tag_str, path):
+        rel = os.path.relpath(os.path.normpath(path), os.path.normpath(os.path.join(self.conf["content_dir"], tag_str)))
+        return rel.split(os.sep)[0] if os.sep in rel else ""
+
+    def _block_shows(self, tag_str):
+        cache = self.__dict__.setdefault("_shows", {})
+        if tag_str not in cache:
+            cache[tag_str] = {}
+            for entry in self.catalog.get_all_by_tag(tag_str) or []:
+                cache[tag_str].setdefault(self._show_of(tag_str, entry.path), []).append(entry)
+            for show, entries in cache[tag_str].items():  # find_candidate picks within a show by this key
+                self.catalog.clip_index[f"{tag_str}\0{show}"] = entries
+        return cache[tag_str]
+
+    def _find_in_show(self, tag_str, show, seconds, when):
+        try:
+            return self.catalog.find_candidate(f"{tag_str}\0{show}", seconds, when, avoid_recent=True)
+        except MatchingContentNotFound:
+            return None
+
+    def _shows_last(self, tag_str):
+        """When each of the tag's shows last started a block, from the schedule so far."""
+        lasts = self.__dict__.setdefault("_shows_last_started", {})
+        if tag_str not in lasts:
+            lasts[tag_str] = {}
+            for block in getattr(self, "_blocks", None) or []:
+                if self._get_block_tag(block) == tag_str and getattr(block.content, "path", None):
+                    lasts[tag_str][self._show_of(tag_str, block.content.path)] = block.start_time
+        return lasts[tag_str]
 
     @staticmethod
     def _get_block_tag(block):

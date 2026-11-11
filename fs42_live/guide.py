@@ -82,7 +82,7 @@ def xmltv():
         if s["network_type"] == "web":
             _web_listings(tv, s, since)
             continue
-        for block in LiquidManager().get_schedule_by_name(s["network_name"]) or []:
+        for block in in_blocks(s, LiquidManager().get_schedule_by_name(s["network_name"]) or []):
             if block.end_time > since:
                 _programme(tv, channel_id(s), block, s)
 
@@ -107,6 +107,21 @@ def _programme(tv, channel, block, station):
     elif subtitle(title, content_title):
         ET.SubElement(prog, "sub-title").text = subtitle(title, content_title)
     ET.SubElement(prog, "previously-shown")
+
+
+def in_blocks(station, blocks):
+    """A channel that plays a show at a time (live_show_blocks: a YouTube channel's videos for half an hour)
+    is listed by show: its videos in a row are one listing, titled by the show's folder, with no episode."""
+    if not station.get("live_show_blocks"):
+        return list(blocks)
+    out = []
+    for block in blocks:
+        title = block_title(station, block)
+        if out and out[-1].title == title and out[-1].end_time == block.start_time:
+            out[-1].end_time = block.end_time
+        else:
+            out.append(SimpleNamespace(title=title, start_time=block.start_time, end_time=block.end_time, content=None))
+    return out
 
 
 def block_title(station, block):
@@ -187,7 +202,8 @@ def fill_in_retro_guide():
         for s in StationManager().stations:
             if s["network_type"] != "web" and s["network_name"] in by_station:
                 # copies: the scheduler reads a clip block's title as its tag
-                by_station[s["network_name"]] = [_retitled(b, block_title(s, b)) for b in by_station[s["network_name"]]]
+                by_station[s["network_name"]] = [_retitled(b, block_title(s, b)) if not s.get("live_show_blocks") else b
+                                                 for b in in_blocks(s, by_station[s["network_name"]])]
             if s["network_type"] == "web" and not s.get("hidden"):
                 title = s.get("live_guide_listing") or listing(s)  # the guide shows the channel name beside it
                 by_station[s["network_name"]] = list(web_blocks(title, start, end))
