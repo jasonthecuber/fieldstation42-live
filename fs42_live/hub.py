@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 
 from fs42_live import settings
@@ -120,6 +121,10 @@ class ChannelHub:
     def warm(self, station):
         """Start a channel ahead of a viewer likely to flip to it. It runs for the surf grace
         unless warmed again or watched."""
+        key = (station["channel_number"], station.get("live_crop_to"))
+        running = self._channels.get(key)
+        if (running is None or running.closed) and _busy():
+            return  # a busy box doesn't start channels nobody is watching yet; flipping just takes a moment longer
         channel = self._channel(station)
         channel.warmed_until = time.monotonic() + settings.get("surf_grace")
         channel.hold(settings.get("surf_grace"))
@@ -151,6 +156,14 @@ class ChannelHub:
             _l.info(f"{channel.name}: restarted from the control panel")
             channel.stop()
         return bool(running)
+
+
+def _busy():
+    """True when the processor is already behind: the last minute's load is over `warm_max_load` per core."""
+    try:
+        return os.getloadavg()[0] > settings.get("warm_max_load") * (os.cpu_count() or 1)
+    except OSError:
+        return False
 
 
 hub = ChannelHub()

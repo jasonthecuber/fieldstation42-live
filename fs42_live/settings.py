@@ -14,6 +14,8 @@ DEFAULTS = {
     "surf_grace": 5,
     # channels started ahead on each side of the one playing in the web player; 0 turns warming off
     "warm_neighbours": 1,
+    # ...but none are started ahead while the box's load (last minute) is over this much per processor core
+    "warm_max_load": 2,
     # seconds a web channel's page gets to draw before capture starts (a station's `live_page_load` overrides it)
     "page_load": 0.5,
     # the loudness every file is turned up or down to (LUFS); US TV aims at -24

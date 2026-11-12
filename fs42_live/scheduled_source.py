@@ -1,8 +1,10 @@
 import asyncio
 import datetime
+import hashlib
 import logging
 import os
 import random
+import shutil
 import time
 from asyncio.subprocess import DEVNULL, PIPE
 from dataclasses import dataclass
@@ -24,6 +26,8 @@ RESYNC = 5.0  # if planning falls this far behind the wall clock, jump forward
 STARTUP = 0.5  # rough ffmpeg start-up time, used to estimate how much a failed encode produced
 NUDGE = datetime.timedelta(milliseconds=1)  # at exactly a block's end the schedule has no answer
 CHUNK = 64 * 1024
+STILLS = "runtime/stills"  # still pictures (the standby slate) encoded once, then streamed by copying
+STILL_SECONDS = 20  # each is encoded this long, and looped for a longer slot
 
 
 @dataclass
@@ -209,25 +213,84 @@ class ScheduledSource:
 
         overlay = messages.join(overlay, messages.crawl_filter(self.station["channel_number"], pts))
         hw = await asyncio.to_thread(hwaccel.vaapi)
-        _l.info(f"{self.network}: {seg.path} from {seg.start:.1f}s for {seg.duration:.1f}s")
+        vf = p.video_filter(hw, overlay, self.station.get("live_crop_to"), bars.crop_filter(seg.path),
+                            logos.logo_filter(seg.path), pan)
+        audio_in = ["-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo"]
+        still = None
+        if (seg.path is None or os.path.splitext(seg.path)[1].lower() in IMAGE_EXTS) and overlay is None:
+            # nothing moves in a still picture, so it needn't be encoded again every time; on a busy box
+            # (many channels on the slate at once) that is most of the work
+            still = await self._still_file(seg.path, [*video_in, *audio_in], vf, hw)
+        _l.info(f"{self.network}: {seg.path} from {seg.start:.1f}s for {seg.duration:.1f}s"
+                + (" (encoded before)" if still else ""))
         try:
-            proc = await self._spawn(
-                os.path.basename(seg.path or "slate"),
-                *hwaccel.input_args(), "-re", *video_in,
-                "-f", "lavfi", "-i", f"anullsrc=r={p.audio_rate}:cl=stereo",
-                "-map", "0:v:0", "-map", "0:a:0" if has_audio else "1:a",
-                "-t", f"{seg.duration:.3f}", "-shortest",
-                "-vf", p.video_filter(hw, overlay, self.station.get("live_crop_to"), bars.crop_filter(seg.path),
-                                     logos.logo_filter(seg.path), pan), "-af", loudness.audio_filter(seg.path),
-                *p.encode_args(hw),
-                "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
-            )
+            if still:
+                proc = await self._spawn(
+                    os.path.basename(seg.path or "slate"),
+                    "-re", "-stream_loop", "-1", "-i", still, "-t", f"{seg.duration:.3f}",
+                    "-map", "0", "-c", "copy", "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
+                )
+            else:
+                proc = await self._spawn(
+                    os.path.basename(seg.path or "slate"),
+                    *hwaccel.input_args(), "-re", *video_in, *audio_in,
+                    "-map", "0:v:0", "-map", "0:a:0" if has_audio else "1:a",
+                    "-t", f"{seg.duration:.3f}", "-shortest",
+                    "-vf", vf, "-af", loudness.audio_filter(seg.path),
+                    *p.encode_args(hw),
+                    "-f", "mpegts", "-output_ts_offset", f"{pts:.3f}", "pipe:1",
+                )
             while chunk := await proc.stdout.read(CHUNK):
                 out.put_nowait(chunk)
             return await proc.wait() == 0
         finally:
             if pan_file:
                 os.remove(pan_file)
+
+    _stills_making = {}  # file: the task making it
+    _stills_failed = set()  # not tried again until the server restarts
+
+    async def _still_file(self, path, inputs, vf, hw):
+        """The still picture as this channel encodes it, kept in STILLS once made; None until then (the
+        caller encodes it live meanwhile). It is made in the background, at low priority, only once."""
+        args = [*hwaccel.input_args(), *inputs, "-map", "0:v:0", "-map", "1:a", "-t", str(STILL_SECONDS),
+                "-vf", vf, *self.profile.encode_args(hw), "-f", "mpegts"]
+        try:
+            stamp = os.stat(path).st_mtime_ns if path else 0
+        except OSError:
+            return None
+        out = os.path.join(STILLS, hashlib.sha1(repr((path, stamp, args)).encode()).hexdigest()[:16] + ".ts")
+        if os.path.exists(out):
+            return out
+        if out not in self._stills_making and out not in self._stills_failed:
+            # not in _tasks: it outlives this stream
+            self._stills_making[out] = asyncio.create_task(self._make_still(path, args, out))
+        return None
+
+    async def _make_still(self, path, args, out):
+        tmp = f"{out}.{os.getpid()}.part"
+        try:
+            os.makedirs(STILLS, exist_ok=True)
+            nice = ["nice", "-n", "10"] if shutil.which("nice") else []
+            proc = await asyncio.create_subprocess_exec(
+                *nice, "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", *args, tmp,
+                stdin=DEVNULL, stdout=DEVNULL, stderr=PIPE,
+            )
+            _, err = await proc.communicate()
+            if proc.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp):
+                os.replace(tmp, out)
+                _l.info(f"{self.network}: {path or 'the slate'} encoded once, for every channel to copy")
+            else:
+                self._stills_failed.add(out)
+                _l.warning(f"{self.network}: couldn't encode {path or 'the slate'} ahead; it is encoded each time: "
+                           f"{err.decode(errors='replace').strip()[-300:]}")
+        except Exception:
+            self._stills_failed.add(out)
+            _l.exception(f"{self.network}: couldn't encode {path or 'the slate'} ahead")
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+            self._stills_making.pop(out, None)
 
     async def _has_audio(self, path):
         if path not in self._audio_cache:
