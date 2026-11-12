@@ -98,7 +98,7 @@ def find_breaks(path, duration):
         ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-i", path,
          "-vf", f"blackdetect=d={BLACK}:pix_th=0.1:pic_th=0.95",
          "-af", f"silencedetect=n={SILENCE_DB}dB:d=0.1", "-f", "null", "-"],
-        capture_output=True, text=True, check=True).stderr
+        capture_output=True, text=True, errors="replace", check=True).stderr
     blacks = [(float(s), float(e)) for s, e in re.findall(r"black_start:([\d.]+) black_end:([\d.]+)", log)]
     starts = [float(s) for s in re.findall(r"silence_start: ([\d.]+)", log)]
     ends = [float(e) for e in re.findall(r"silence_end: ([\d.]+)", log)] + [duration]

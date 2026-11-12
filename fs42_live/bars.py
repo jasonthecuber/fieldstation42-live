@@ -91,7 +91,7 @@ def find(path, duration):
             ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-ss", f"{duration * at:.1f}", "-i", path,
              "-t", str(SAMPLE_SECONDS), "-an", "-sn", "-dn", "-vf", f"cropdetect=limit={BLACK}:round=2:reset=0",
              "-f", "null", "-"],
-            capture_output=True, text=True).stderr
+            capture_output=True, text=True, errors="replace").stderr
         size = size or re.search(r"Video: .*?, (\d{2,5})x(\d{2,5})(?: \[SAR (\d+):(\d+))?", log)
         found = CROP.findall(log)
         if found:
@@ -140,6 +140,8 @@ def scan_new_files():
             with _lock:
                 was["v"] = VERSION
                 done += 1
+                if done % 50 == 0:
+                    _save()
             continue
         crop = find(path, duration or 0)
         with _lock:
@@ -173,13 +175,13 @@ def _black_was_fine(path, was):
     if not was or was["crop"] or was.get("v", 1) != 3 or was["size"] != os.path.getsize(path):
         return False
     fmt = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=pix_fmt",
-                          "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip()
+                          "-of", "csv=p=0", path], capture_output=True, text=True, errors="replace").stdout.strip()
     return bool(fmt) and not DEEP.search(fmt)
 
 
 def _probe_duration(path):
     out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
-                         capture_output=True, text=True).stdout
+                         capture_output=True, text=True, errors="replace").stdout
     try:
         return float(out.strip())
     except ValueError:

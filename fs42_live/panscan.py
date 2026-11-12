@@ -181,7 +181,7 @@ def _probe(path):
         o = json.loads(subprocess.run(
             ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
              "stream=width,height,sample_aspect_ratio,r_frame_rate", "-of", "json", path],
-            capture_output=True, text=True, timeout=60).stdout)["streams"][0]
+            capture_output=True, text=True, errors="replace", timeout=60).stdout)["streams"][0]
         a, b = o["r_frame_rate"].split("/")
         sar = o.get("sample_aspect_ratio", "1:1").split(":")
         sar = float(sar[0]) / float(sar[1]) if len(sar) == 2 and float(sar[1]) and float(sar[0]) else 1.0
@@ -381,7 +381,7 @@ def scan_new_files():
         plan = {"fps": 0, "shots": None}
         if _wide(path, crop):
             run = subprocess.run(["nice", "-n", "19", sys.executable, "-m", "fs42_live.panscan", path, json.dumps(crop)],
-                                 stdin=subprocess.DEVNULL, capture_output=True, text=True)
+                                 stdin=subprocess.DEVNULL, capture_output=True, text=True, errors="replace")
             if run.returncode != 0:
                 _l.warning(f"panscan: {os.path.basename(path)}: {run.stderr.strip()[-300:]}")
                 continue

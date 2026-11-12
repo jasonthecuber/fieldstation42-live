@@ -124,7 +124,7 @@ def _make_copies(tracks):
         done = subprocess.run(
             ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", track, "-vn",
              "-af", chain, "-ar", "48000", "-ac", "2", "-c:a", "aac", "-b:a", "192k", tmp],
-            capture_output=True, text=True)
+            capture_output=True, text=True, errors="replace")
         if done.returncode == 0:
             os.replace(tmp, copy)
             _l.info(f"loudness: levelled copy of {os.path.basename(track)} ({gain:+.1f} dB)")
@@ -167,7 +167,7 @@ def measure(path):
     log = subprocess.run(
         ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-i", path,
          "-vn", "-sn", "-dn", "-af", "ebur128", "-f", "null", "-"],
-        capture_output=True, text=True).stderr
+        capture_output=True, text=True, errors="replace").stderr
     summary = log.rpartition("Summary:")[2]
     found = re.search(r"I:\s+(-?[\d.]+) LUFS", summary)
     return float(found.group(1)) if found else None

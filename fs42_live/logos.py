@@ -135,7 +135,7 @@ def _frame(path, at, w, h):
 
 def _size(path):
     out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-                          "stream=width,height", "-of", "csv=p=0", path], capture_output=True, text=True).stdout
+                          "stream=width,height", "-of", "csv=p=0", path], capture_output=True, text=True, errors="replace").stdout
     try:
         vw, vh = map(int, out.strip().split(",")[:2])
         return vw, vh
