@@ -26,10 +26,13 @@ SAMPLE_SECONDS = 2
 LEAST = 0.08  # bars thinner than this (of the height, or the width) are left alone: edge noise, not bars
 EVEN = 0.04  # bars are as thick on one side as the other, give or take this (of the width, or the height)
 NARROWEST = 0.6  # and leave at least this much of the width
-VERSION = 3  # a crop found before 2 (when uneven or narrow ones counted) is looked for again, and so is
-# none found before 3 (when a logo on one of the bars hid them)
+VERSION = 4  # a crop found before 2 (when uneven or narrow ones counted) is looked for again, and so is
+# none found before 3 (when a logo on one of the bars hid them) or before 4 (when a 10-bit video's black,
+# which is 64 not 16, never counted as black)
+BLACK = 0.094  # of the brightest a pixel can be, so 24 in an 8-bit video and 96 in a 10-bit one
 CHECK_EVERY = 600
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".mpg", ".mpeg", ".ts", ".webm", ".wmv", ".flv"}
+DEEP = re.compile(r"p01[026]|(9|1[0-6])(le|be)$")  # pixel formats with more than 8 bits
 CROP = re.compile(r"crop=(-?\d+):(-?\d+):(-?\d+):(-?\d+)")
 
 _lock = threading.Lock()
@@ -62,7 +65,7 @@ def _found(path):
     except OSError:
         return False
     found = _load().get(path)
-    if not found or found["size"] != size or found.get("v", 1) < (2 if found["crop"] else 3):
+    if not found or found["size"] != size or found.get("v", 1) < (2 if found["crop"] else 4):
         return False
     return found["crop"]
 
@@ -86,7 +89,7 @@ def find(path, duration):
     for at in SAMPLES:
         log = subprocess.run(
             ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-ss", f"{duration * at:.1f}", "-i", path,
-             "-t", str(SAMPLE_SECONDS), "-an", "-sn", "-dn", "-vf", "cropdetect=limit=24:round=2:reset=0",
+             "-t", str(SAMPLE_SECONDS), "-an", "-sn", "-dn", "-vf", f"cropdetect=limit={BLACK}:round=2:reset=0",
              "-f", "null", "-"],
             capture_output=True, text=True).stderr
         size = size or re.search(r"Video: .*?, (\d{2,5})x(\d{2,5})(?: \[SAR (\d+):(\d+))?", log)
@@ -132,6 +135,12 @@ def scan_new_files():
         with _lock:
             if _found(path) is not False or not os.path.exists(path):
                 continue
+            was = _load().get(path)
+        if _black_was_fine(path, was):
+            with _lock:
+                was["v"] = VERSION
+                done += 1
+            continue
         crop = find(path, duration or 0)
         with _lock:
             had = path in _load()
@@ -157,6 +166,15 @@ def _forget_inside(path):
         with found._lock:
             if found._load().pop(path, None) is not None:
                 found._save()
+
+
+def _black_was_fine(path, was):
+    """No bars found before 4 in a file that isn't 10-bit (or more) was right: its black always counted."""
+    if not was or was["crop"] or was.get("v", 1) != 3 or was["size"] != os.path.getsize(path):
+        return False
+    fmt = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=pix_fmt",
+                          "-of", "csv=p=0", path], capture_output=True, text=True).stdout.strip()
+    return bool(fmt) and not DEEP.search(fmt)
 
 
 def _probe_duration(path):

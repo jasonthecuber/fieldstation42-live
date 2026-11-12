@@ -51,5 +51,34 @@ class TestFind(unittest.TestCase):
         self.assertEqual(_find("600:480:90:0", "720x480 [SAR 32:27 DAR 16:9]"), [540, 480, 90, 0])
 
 
+class TestDeepColour(unittest.TestCase):
+    """10-bit black is 64, not 16: an absolute cropdetect limit of 24 never saw a 10-bit video's bars."""
+
+    def test_black_is_a_fraction_of_the_brightest(self):
+        with patch.object(bars.subprocess, "run", return_value=SimpleNamespace(stderr="")) as run:
+            bars.find("/x.mkv", 3600)
+        vf = run.call_args[0][0][run.call_args[0][0].index("-vf") + 1]
+        self.assertIn("limit=0.094:", vf)
+
+    def _fine(self, fmt, was):
+        with patch.object(bars.os.path, "getsize", return_value=5), \
+                patch.object(bars.subprocess, "run", return_value=SimpleNamespace(stdout=fmt + "\n")):
+            return bars._black_was_fine("/x.mkv", was)
+
+    def test_none_found_in_an_8_bit_file_stands(self):
+        for fmt in ("yuv420p", "yuvj420p", "nv12", "rgb24"):
+            self.assertTrue(self._fine(fmt, {"size": 5, "crop": None, "v": 3}), fmt)
+
+    def test_none_found_in_a_10_bit_file_is_looked_for_again(self):
+        for fmt in ("yuv420p10le", "p010le", "yuv422p12be", "gray16le"):
+            self.assertFalse(self._fine(fmt, {"size": 5, "crop": None, "v": 3}), fmt)
+
+    def test_only_old_none_results_are_waved_through(self):
+        self.assertFalse(self._fine("yuv420p", {"size": 5, "crop": [1, 1, 0, 0], "v": 3}))
+        self.assertFalse(self._fine("yuv420p", {"size": 5, "crop": None, "v": 2}))
+        self.assertFalse(self._fine("yuv420p", {"size": 6, "crop": None, "v": 3}))
+        self.assertFalse(self._fine("yuv420p", None))
+
+
 if __name__ == "__main__":
     unittest.main()
