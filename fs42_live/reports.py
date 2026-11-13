@@ -14,7 +14,7 @@ from fs42.liquid_manager import LiquidManager
 
 STORE = "runtime/reports.jsonl"  # one report per line, oldest first
 LOOK_BACK = 35  # seconds of schedule saved before the menu opened
-PICKS = {1: "Wrong bumper or ad", 2: "Static or frozen", 3: "Sound problem", 4: "Wrong show or listing", 5: "Something else"}
+PICKS = {1: "Bumper or ad problem", 2: "Static or frozen", 3: "Sound problem", 4: "Wrong show or listing", 5: "Something else"}
 NUDGE = datetime.timedelta(milliseconds=1)  # at exactly a block's end the schedule has no answer
 
 _lock = threading.Lock()

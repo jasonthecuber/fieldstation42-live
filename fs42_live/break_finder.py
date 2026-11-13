@@ -39,7 +39,7 @@ FEWEST_BREAKS = 3  # fewer found isn't a pattern to trust...
 LONGEST_ACT = 960  # ...unless they leave no act longer than this
 PENDING = "runtime/break_finder_rebuild.json"  # stations whose schedules still need the new breaks
 PEERS = "runtime/peer_breaks"  # our other boxes' breaks, one file each (Control Room's sharing fetches them)
-REBUILD_EVERY = 3600  # seconds of scanning before the schedules get the breaks found so far
+REBUILD_EVERY = 3600  # seconds of scanning episodes not on a schedule yet before the order is worked out again
 
 
 def scan_new_episodes():
@@ -51,8 +51,10 @@ def scan_new_episodes():
     An episode another box already scanned (the same file there: same name and size) takes its
     breaks from there. The rest go by what plays soonest on any channel's built schedule, so
     what's about to air has its breaks first; then the episodes not on the schedule yet, the
-    channels with the fewest left first. After an hour of scanning it returns, so schedules get
-    the breaks found so far and the order is worked out again from the schedules as they are."""
+    channels with the fewest left first. It returns as soon as an episode on a built schedule has
+    its breaks (scanned or taken), so that schedule is rebuilt before the episode airs; when
+    another box's breaks come in, so they're taken before scanning on; and after an hour, so the
+    order is worked out again from the schedules as they are."""
     fluid = FluidBuilder()
     pending = _pending()
     stations = [s for s in StationManager().stations if s.get("_has_catalog")]
@@ -81,12 +83,14 @@ def scan_new_episodes():
     if took:
         _l.info(f"break finder: {took} episodes' breaks came from another box with the same files")
         _save_pending(pending)
+        if pending:  # what plays soon gets them now, before any scanning
+            return _named(stations, pending), bool(left)
     never = datetime.datetime.max
     left.sort(key=lambda e: soon[e[1]][0] if e[1] in soon else never)  # stable: the rest keep the channels' order
 
-    started = time.monotonic()
+    started, peers = time.monotonic(), _peers_stamp()
     for i, (entry, path) in enumerate(left):
-        if i and time.monotonic() - started >= REBUILD_EVERY:
+        if i and (time.monotonic() - started >= REBUILD_EVERY or _peers_stamp() != peers):
             return _named(stations, pending), True
         try:
             points = find_breaks(path, entry.duration)
@@ -102,6 +106,7 @@ def scan_new_episodes():
         if playing:
             pending |= playing
             _save_pending(pending)
+            return _named(stations, pending), i + 1 < len(left)
     return _named(stations, pending), False
 
 
@@ -145,6 +150,14 @@ def peer_breaks():
         except (OSError, ValueError, TypeError, AttributeError) as e:
             _l.warning(f"break finder: can't read {name}'s breaks: {e}")
     return shared
+
+
+def _peers_stamp():
+    """When another box's breaks last came in."""
+    try:
+        return max((e.stat().st_mtime for e in os.scandir(PEERS) if e.name.endswith(".json")), default=0)
+    except OSError:
+        return 0
 
 
 def _key(path):

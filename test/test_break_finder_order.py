@@ -34,27 +34,30 @@ def station(name):
 
 def test_what_plays_soonest_goes_first_then_channels_with_fewest_left(monkeypatch):
     big, small = station("Big"), station("Small")
-    entries = {"Big": [episode(f"/b{i}") for i in range(3)], "Small": [episode("/s0")]}
+    entries = {"Big": [episode(f"/b{i}") for i in range(4)], "Small": [episode("/s0")]}
     at = datetime.datetime(2026, 11, 13, 20)
     soon = {"/b2": (at, {"Big"}), "/b1": (at + datetime.timedelta(hours=1), {"Big", "Small"})}
     scanned, stored, pending = _scanner(monkeypatch, [big, small], entries, soon)
 
-    assert break_finder.scan_new_episodes() == ([big, small], False)
-    assert scanned == ["/b2", "/b1", "/s0", "/b0"]
-    assert pending == {"Big", "Small"}
+    # each episode about to air hands its schedules back to be rebuilt right away
+    assert break_finder.scan_new_episodes() == ([big], True)
+    assert scanned == ["/b2"]
+    assert break_finder.scan_new_episodes() == ([big, small], True)
+    assert scanned == ["/b2", "/b1"]
+    assert break_finder.scan_new_episodes() == ([big, small], False)  # the rest aren't on a schedule
+    assert scanned == ["/b2", "/b1", "/s0", "/b0", "/b3"]
 
 
-def test_an_hour_of_scanning_hands_back_the_schedules_to_rebuild(monkeypatch):
+def test_episodes_not_on_a_schedule_go_on_for_an_hour(monkeypatch):
     big = station("Big")
     entries = {"Big": [episode(f"/b{i}") for i in range(3)]}
-    soon = {"/b0": (datetime.datetime(2026, 11, 13, 20), {"Big"})}
-    scanned, stored, pending = _scanner(monkeypatch, [big], entries, soon)
+    scanned, stored, pending = _scanner(monkeypatch, [big], entries)
     monkeypatch.setattr(break_finder, "REBUILD_EVERY", 0)
 
-    assert break_finder.scan_new_episodes() == ([big], True)  # one scanned, then back
+    assert break_finder.scan_new_episodes() == ([], True)  # one scanned, then back
     assert scanned == ["/b0"]
-    assert break_finder.scan_new_episodes() == ([big], True)
-    assert break_finder.scan_new_episodes() == ([big], False)
+    assert break_finder.scan_new_episodes() == ([], True)
+    assert break_finder.scan_new_episodes() == ([], False)
     assert scanned == ["/b0", "/b1", "/b2"]
 
 
@@ -73,10 +76,24 @@ def test_the_same_file_scanned_on_another_box_takes_its_breaks(tmp_path, monkeyp
     scanned, stored, pending = _scanner(monkeypatch, [shows], {"Shows": [episode(str(same)), episode(str(other))]},
                                         soon, shared=True)
 
-    assert break_finder.scan_new_episodes() == ([shows], False)
+    assert break_finder.scan_new_episodes() == ([shows], True)  # rebuilt with them before scanning on
     assert stored[str(same)] == theirs
+    assert scanned == []
+    break_finder.scan_new_episodes()
     assert scanned == [str(other)]
-    assert pending == {"Shows"}
+
+
+def test_breaks_coming_in_from_another_box_are_taken_before_scanning_on(tmp_path, monkeypatch):
+    peers = tmp_path / "peer_breaks"
+    peers.mkdir()
+    monkeypatch.setattr(break_finder, "PEERS", str(peers))
+    shows = station("Shows")
+    scanned, stored, pending = _scanner(monkeypatch, [shows], {"Shows": [episode(f"/e{i}") for i in range(3)]})
+    arrived = lambda p, d: (scanned.append(p), (peers / "crumpet.json").write_text('{"files": []}'))[0] or []
+    monkeypatch.setattr(break_finder, "find_breaks", arrived)
+
+    assert break_finder.scan_new_episodes() == ([], True)
+    assert scanned == ["/e0"]
 
 
 def test_moved_folders_are_followed_with_their_breaks(tmp_path, monkeypatch):
