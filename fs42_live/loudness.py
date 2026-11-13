@@ -4,6 +4,10 @@ Each file's loudness (EBU R128 integrated, in LUFS) is measured once, in the bac
 encoder turns it up or down to `loudness_target` (fs42_live/settings.py). Turning up can push
 peaks past full scale, so a limiter follows. A file not measured yet plays as it is, and is
 queued, so a bump or slate that isn't in any catalog gets measured the first time it plays.
+
+A stereo file whose two channels are each other's opposite (one wired backwards) sounds fine on two
+speakers but is silent wherever it's mixed down to one; it is found when measured and one channel is
+turned back over as it plays.
 """
 
 import asyncio
@@ -21,11 +25,13 @@ from fs42_live import settings
 
 _l = logging.getLogger("FS42LIVE")
 
-STORE = "runtime/loudness.json"  # realpath -> {"size": bytes, "lufs": measured or None}
+STORE = "runtime/loudness.json"  # realpath -> {"size": bytes, "lufs": measured or None, "flip": True if backwards}
 LEVELLED = "runtime/levelled_music"  # web page channels' music, each track turned to the target
 MOST_UP = 10.0  # dB; more would mostly raise hiss
 MOST_DOWN = -15.0
 SILENT = -50.0  # LUFS; quieter than this is a silent clip, left alone
+CANCELS = 20.0  # dB; channels this much quieter added together than taken apart are each other's opposite
+FLIP = "pan=stereo|c0=c0|c1=-1*c1"
 CHECK_EVERY = 600  # seconds; often, since files the encoder meets get queued
 AUDIO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".mpg", ".mpeg", ".ts", ".webm", ".wmv", ".flv"}
 
@@ -62,8 +68,13 @@ def _measured(path):
     return found["lufs"] if found and found["size"] == size else False
 
 
+def _backwards(path):
+    """True if the stored measuring found its channels each other's opposite."""
+    return bool(_load().get(path, {}).get("flip"))
+
+
 def audio_filter(path):
-    """The encoder's -af chain for a file: in sync, then levelled."""
+    """The encoder's -af chain for a file: in sync, turned back over if backwards, then levelled."""
     chain = "aresample=async=1"
     if path is None or os.path.splitext(path)[1].lower() not in AUDIO_EXTS:
         return chain
@@ -73,6 +84,8 @@ def audio_filter(path):
         if lufs is False:
             _queued.add(path)
             return chain
+        if _backwards(path):
+            chain += "," + FLIP
     if lufs is None or lufs < SILENT:
         return chain
     return chain + _levelled(lufs)
@@ -97,12 +110,13 @@ def music_playlist(tracks):
 
 
 def _copy_path(track, lufs):
-    """Where a track's levelled copy goes: named for the track and its gain, so a new loudness target
-    (or a changed track) makes a new copy."""
+    """Where a track's levelled copy goes: named for the track and its gain (and whether it's turned back
+    over), so a new loudness target (or a changed track) makes a new copy."""
     gain = 0.0 if lufs is None or lufs < SILENT else _gain(lufs)
     path = os.path.realpath(track)
     digest = hashlib.sha1(f"{path}:{os.path.getsize(path)}".encode()).hexdigest()[:12]
-    return os.path.join(os.path.abspath(LEVELLED), f"{digest}_{gain:+.1f}.m4a")  # (a playlist's relative paths are from its own folder)
+    flip = "_flip" if _backwards(path) else ""
+    return os.path.join(os.path.abspath(LEVELLED), f"{digest}_{gain:+.1f}{flip}.m4a")  # (a playlist's relative paths are from its own folder)
 
 
 def _make_copies(tracks):
@@ -112,14 +126,15 @@ def _make_copies(tracks):
     for track in tracks:
         with _lock:
             lufs = _measured(os.path.realpath(track))
-        if lufs is False:
-            continue
-        copy = _copy_path(track, lufs)
+            if lufs is False:
+                continue
+            copy, flip = _copy_path(track, lufs), _backwards(os.path.realpath(track))
         wanted.add(os.path.basename(copy))
         if os.path.exists(copy):
             continue
         gain = _gain(lufs) if lufs is not None and lufs >= SILENT else 0.0
-        chain = f"volume={gain:.1f}dB" + (",alimiter=limit=0.89:level=false" if gain > 0 else "")
+        chain = (FLIP + "," if flip else "") + f"volume={gain:.1f}dB" + (
+            ",alimiter=limit=0.89:level=false" if gain > 0 else "")
         tmp = copy + ".tmp.m4a"
         done = subprocess.run(
             ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", track, "-vn",
@@ -173,6 +188,32 @@ def measure(path):
     return float(found.group(1)) if found else None
 
 
+def backwards(path):
+    """True if a stereo file's two channels are each other's opposite: added together they nearly cancel,
+    while taken apart they don't. Listened to for a minute a third of the way in."""
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels:format=duration",
+         "-of", "json", path], capture_output=True, text=True, errors="replace")
+    try:
+        info = json.loads(probe.stdout)
+        if info["streams"][0]["channels"] != 2:
+            return False
+        start = float(info["format"]["duration"]) / 3
+    except (ValueError, KeyError, IndexError, TypeError):
+        return False
+
+    def level(sign):
+        log = subprocess.run(
+            ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", "-ss", f"{start:.1f}", "-t", "60",
+             "-i", path, "-map", "0:a:0", "-af", f"pan=mono|c0=0.5*c0{sign}0.5*c1,volumedetect", "-f", "null", "-"],
+            capture_output=True, text=True, errors="replace").stderr
+        found = re.search(r"mean_volume: (-?[\d.]+) dB", log)
+        return float(found.group(1)) if found else None
+
+    together, apart = level("+"), level("-")
+    return together is not None and apart is not None and apart > SILENT and together < apart - CANCELS
+
+
 def scan_new_files():
     """Measures every catalog file (shortest first, so the ads are done early) and anything
     queued by the encoder, skipping files already measured."""
@@ -193,19 +234,27 @@ def scan_new_files():
     done = 0
     for _, path in sorted(paths):
         with _lock:
-            if _measured(path) is not False or not os.path.exists(path):
+            if not os.path.exists(path):
                 continue
-        lufs = measure(path)
+            lufs = _measured(path)
+            if lufs is not False and "flip" in _load()[path]:
+                continue
+        new = lufs is False  # (else measured before the backwards check came in: only that, once)
+        if new:
+            lufs = measure(path)
+        flip = lufs is not None and lufs >= SILENT and backwards(path)
         with _lock:
-            _load()[path] = {"size": os.path.getsize(path), "lufs": lufs}
+            _load()[path] = {"size": os.path.getsize(path), "lufs": lufs, "flip": flip}
             done += 1
             if done % 20 == 0:
                 _save()
-        _l.info(f"loudness: {os.path.basename(path)}: {lufs} LUFS")
+        if new or flip:
+            _l.info(f"loudness: {os.path.basename(path)}: {lufs} LUFS"
+                    + (", channels backwards: turned back over" if flip else ""))
     if done:
         with _lock:
             _save()
-        _l.info(f"loudness: measured {done} files")
+        _l.info(f"loudness: measured or checked {done} files")
     wanted = _make_copies(sorted(music))
     for name in set(os.listdir(LEVELLED)) - wanted:
         os.remove(os.path.join(LEVELLED, name))
