@@ -17,6 +17,7 @@ import re
 import sqlite3
 import subprocess
 import time
+from collections import defaultdict
 from contextlib import closing
 
 from fs42.catalog_api import CatalogAPI
@@ -25,6 +26,8 @@ from fs42.fluid_statements import FluidStatements
 from fs42.liquid_api import LiquidAPI
 from fs42.media_processor import MediaProcessor
 from fs42.station_manager import StationManager
+from fs42_live import break_listener
+from fs42_live.break_patterns import _apart, learn, look_closer, show_of
 from fs42_live.catalog_watcher import follow_moves
 
 _l = logging.getLogger("FS42LIVE")
@@ -39,6 +42,8 @@ FEWEST_BREAKS = 3  # fewer found isn't a pattern to trust...
 LONGEST_ACT = 960  # ...unless they leave no act longer than this
 PENDING = "runtime/break_finder_rebuild.json"  # stations whose schedules still need the new breaks
 PEERS = "runtime/peer_breaks"  # our other boxes' breaks, one file each (Control Room's sharing fetches them)
+LOOKED = "runtime/break_finder_looked.json"  # {episode: how its second look went} (second_look)
+QUIET_AFTER = 3  # episodes of a show listened to with no cue before it isn't listened to any more
 REBUILD_EVERY = 3600  # seconds of scanning episodes not on a schedule yet before the order is worked out again
 
 
@@ -54,15 +59,33 @@ def scan_new_episodes():
     channels with the fewest left first. It returns as soon as an episode on a built schedule has
     its breaks (scanned or taken), so that schedule is rebuilt before the episode airs; when
     another box's breaks come in, so they're taken before scanning on; and after an hour, so the
-    order is worked out again from the schedules as they are."""
+    order is worked out again from the schedules as they are.
+
+    An episode with no clear breaks gets a second look (break_patterns, break_listener): near
+    where its show's breaks usually fall, or, for a short show with no pattern yet, listening for
+    the host's "we'll be right back". How each went is kept in LOOKED, so it's done once; one
+    that found nothing is looked at again once its show has a pattern."""
     fluid = FluidBuilder()
     pending = _pending()
     stations = [s for s in StationManager().stations if s.get("_has_catalog")]
     for station in stations:
         follow_moves(station)
+    stored, looked = _stored(fluid), _looked()
+    patterns = learn(stored, {p for p, how in looked.items() if how in UNSURE})
+
+    def needs(entry, path):
+        if path not in stored:
+            return True
+        if stored[path]:
+            return False
+        if path not in looked:
+            return True
+        pattern = patterns.get(show_of(path))
+        return looked[path] in ("none", "quiet") and pattern is not None and pattern.fits(entry.duration)
+
     todo = {s["network_name"]: [e for e in CatalogAPI.get_entries(s)
                                 if e.content_type == "feature" and e.duration >= SHORTEST_EPISODE
-                                and not is_scanned(fluid, e.realpath or os.path.realpath(e.path))]
+                                and needs(e, e.realpath or os.path.realpath(e.path))]
             for s in stations}
     soon = upcoming(stations)
     shared = peer_breaks()
@@ -74,10 +97,14 @@ def scan_new_episodes():
                 continue
             seen.add(path)
             segments = shared.get(_key(path)) if shared else None
-            if segments is None:
+            if not segments:
+                if segments == [] and path not in stored:  # nothing clear there either: just the second look
+                    store(fluid, path, [])
+                    stored[path] = []
                 left.append((entry, path))
                 continue
             store(fluid, path, segments)
+            stored[path] = segments
             took += 1
             pending |= soon.get(path, (None, set()))[1]
     if took:
@@ -88,26 +115,113 @@ def scan_new_episodes():
     never = datetime.datetime.max
     left.sort(key=lambda e: soon[e[1]][0] if e[1] in soon else never)  # stable: the rest keep the channels' order
 
+    hearing = Hearing(looked)
     started, peers = time.monotonic(), _peers_stamp()
     for i, (entry, path) in enumerate(left):
         if i and (time.monotonic() - started >= REBUILD_EVERY or _peers_stamp() != peers):
             return _named(stations, pending), True
         try:
-            points = find_breaks(path, entry.duration)
+            points = []
+            if path not in stored:
+                points = find_breaks(path, entry.duration)
+                if points:
+                    _l.info(f"break finder: {entry.title}: breaks at {_clocks(points)}")
+            if not points:
+                points, how = second_look(path, entry.duration, patterns, hearing)
+                if how is None:  # listening can't be done just now; it's tried again later
+                    if path not in stored:
+                        store(fluid, path, [])
+                        stored[path] = []
+                    continue
+                looked[path] = how
+                _save_looked(looked)
+                _l.info(f"break finder: {entry.title}: no clear act breaks; {SAID[how]}"
+                        + (f" {_clocks(points)}" if points else ""))
         except (OSError, subprocess.CalledProcessError) as e:
             _l.warning(f"break finder: can't scan {path}: {e}")
             continue
-        if points:
-            _l.info(f"break finder: {entry.title}: breaks at {', '.join(clock(p) for p in points)}")
-        else:
-            _l.info(f"break finder: {entry.title}: no clear act breaks; keeping evenly spaced ones")
         store(fluid, path, as_segments(points, entry.duration))
+        stored[path] = as_segments(points, entry.duration)
         playing = soon.get(path, (None, set()))[1] - pending
         if playing:
             pending |= playing
             _save_pending(pending)
             return _named(stations, pending), i + 1 < len(left)
     return _named(stations, pending), False
+
+
+SAID = {"closer": "a closer look found", "usual": "at the show's usual times",
+        "heard": "the host says they'll be right back at", "quiet": "keeping evenly spaced ones",
+        "none": "keeping evenly spaced ones"}
+UNSURE = ("closer", "usual")  # placed with a pattern's help, so they don't teach it
+
+
+class Hearing:
+    """Whether to listen to a show: listening works here, and the show hasn't been listened to
+    QUIET_AFTER times without a cue (sitcoms don't say they'll be right back)."""
+
+    def __init__(self, looked):
+        self.works, self.broken = break_listener.available(), False
+        self.quiet, self.heard = defaultdict(int), set()
+        for path, how in looked.items():
+            if how == "quiet":
+                self.quiet[show_of(path)] += 1
+            elif how == "heard":
+                self.heard.add(show_of(path))
+
+    def worth(self, path, duration):
+        show = show_of(path)
+        return (self.works and duration < break_listener.LONGEST
+                and (show in self.heard or self.quiet[show] < QUIET_AFTER))
+
+    def heard_it(self, path, any_cue):
+        if any_cue:
+            self.heard.add(show_of(path))
+        else:
+            self.quiet[show_of(path)] += 1
+
+
+def second_look(path, duration, patterns, hearing):
+    """(points, how) for an episode with no clear breaks; how is None when it should wait."""
+    pattern = patterns.get(show_of(path))
+    if pattern is not None and pattern.fits(duration):
+        return look_closer(path, duration, pattern)
+    if not hearing.worth(path, duration):
+        return [], "none"
+    if hearing.broken:
+        return [], None
+    cues = break_listener.listen(path)
+    if cues is None:  # the rest wait too, till the next round
+        hearing.broken = True
+        return [], None
+    points = _apart(sorted(t for t, _ in cues if EDGE <= t <= duration - EDGE))
+    hearing.heard_it(path, bool(points))
+    return points, "heard" if points else "quiet"
+
+
+def _clocks(points):
+    return ", ".join(clock(p) for p in points)
+
+
+def _stored(fluid):
+    """{path: segments} for every episode scanned ([] where no clear breaks were found)."""
+    with closing(sqlite3.connect(fluid.db_path)) as db:
+        return {path: json.loads(points) if points else [] for path, points in
+                db.execute("SELECT path, points FROM break_points")}
+
+
+def _looked():
+    try:
+        with open(LOOKED) as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+def _save_looked(looked):
+    with open(LOOKED + ".new", "w") as f:
+        json.dump(looked, f)
+    os.replace(LOOKED + ".new", LOOKED)
 
 
 def _named(stations, names):
@@ -224,12 +338,6 @@ def as_segments(points, duration):
     edges = [0.0, *points, duration]
     segments = [{"chapter_start": edges[i], "chapter_end": edges[i + 1]} for i in range(len(edges) - 1)]
     return MediaProcessor.calc_black_segments(segments, duration)
-
-
-def is_scanned(fluid, path):
-    # an episode without clear breaks is stored as [], which upstream's lookup can't tell apart
-    with closing(sqlite3.connect(fluid.db_path)) as db:
-        return db.execute("SELECT 1 FROM break_points WHERE path = ?", (path,)).fetchone() is not None
 
 
 def store(fluid, path, segments):

@@ -15,3 +15,5 @@ mutagen
 # pan and scan (panscan.py): faces, with YuNet
 opencv-python-headless==5.0.0.93
 numpy==2.4.6
+# commercial breaks (break_listener.py): hearing the host say they'll be right back
+faster-whisper==1.2.1
