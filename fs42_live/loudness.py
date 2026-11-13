@@ -84,6 +84,8 @@ def audio_filter(path):
         if lufs is False:
             _queued.add(path)
             return chain
+        if "flip" not in _load()[path]:
+            _queued.add(path)  # (measured before the backwards check came in: checked next)
         if _backwards(path):
             chain += "," + FLIP
     if lufs is None or lufs < SILENT:
@@ -215,25 +217,38 @@ def backwards(path):
 
 
 def scan_new_files():
-    """Measures every catalog file (shortest first, so the ads are done early) and anything
-    queued by the encoder, skipping files already measured."""
-    paths, music = set(), set()
-    for station in StationManager().stations:
+    """Measures every catalog file and anything queued by the encoder, skipping files already measured.
+    What viewers meet first goes first: what the encoder just met (it's playing), then what's on now
+    and up next on the channels, soonest first, then the rest shortest first (so the ads are early)."""
+    from fs42_live.break_finder import upcoming  # (heavy, and only wanted here)
+    stations = StationManager().stations
+    paths, music = {}, set()
+    for station in stations:
         if station.get("_has_catalog"):
-            for entry in sorted(CatalogAPI.get_entries(station), key=lambda e: e.duration):
+            for entry in CatalogAPI.get_entries(station):
                 path = entry.realpath or os.path.realpath(entry.path)
                 if os.path.splitext(path)[1].lower() in AUDIO_EXTS:
-                    paths.add((entry.duration, path))
+                    paths[path] = min(paths.get(path, entry.duration), entry.duration)
         elif station.get("network_type") == "web":
             from fs42_live.web_source import music_tracks  # (it imports this module)
             music |= set(music_tracks(station))
-    paths |= {(0, os.path.realpath(t)) for t in music}
-    with _lock:
-        paths |= {(0, p) for p in _queued}
-        _queued.clear()
+    try:
+        soon = {path: when.timestamp() for path, (when, _) in upcoming(stations, on_air=True).items()}
+    except Exception:
+        _l.exception("loudness: couldn't read the schedules; going shortest first")
+        soon = {}
+    order = {path: (1, soon[path]) if path in soon else (2, duration) for path, duration in paths.items()}
+    order.update({os.path.realpath(t): (0, 0) for t in music})  # (a page channel's music is always playing)
+    todo = sorted(order, key=lambda p: (order[p], p))
     done = 0
-    for _, path in sorted(paths):
+    while True:
         with _lock:
+            if _queued:  # (the encoder met it: it's playing now, so it goes ahead of the rest)
+                path = _queued.pop()
+            elif todo:
+                path = todo.pop(0)
+            else:
+                break
             if not os.path.exists(path):
                 continue
             lufs = _measured(path)

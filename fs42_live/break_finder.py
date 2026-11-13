@@ -237,15 +237,16 @@ def _named(stations, names):
     return [s for s in stations if s["network_name"] in names]
 
 
-def upcoming(stations):
-    """{file: (when it next plays, the stations playing it)}, from each built schedule from now on."""
+def upcoming(stations, on_air=False):
+    """{file: (when it next plays, the stations playing it)}, from each built schedule from now on
+    (and with on_air, what's playing now too)."""
     now = datetime.datetime.now()
     soon = {}
     for station in stations:
         if not station.get("_has_schedule"):
             continue
         for block in LiquidAPI.get_blocks(station) or []:
-            if block.start_time <= now:
+            if (block.end_time if on_air else block.start_time) <= now:
                 continue
             content = block.content if isinstance(block.content, list) else [block.content]
             for c in content:

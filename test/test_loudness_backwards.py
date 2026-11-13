@@ -1,4 +1,5 @@
 """Stereo with one channel wired backwards: found when measured, turned back over as it plays."""
+import os
 import re
 import subprocess
 
@@ -62,3 +63,32 @@ def test_files_measured_before_the_check_are_checked_once(tmp_path, known, monke
     assert loudness.FLIP in loudness.audio_filter(path)
     loudness.scan_new_files()
     assert measured == []
+
+
+def test_what_viewers_meet_first_is_checked_first(tmp_path, known, monkeypatch):
+    from fs42_live import break_finder
+    import datetime
+    files = {n: _make(tmp_path / f"{n}.mp4", "pan=stereo|c0=c0|c1=0.6*c0") for n in ("ad", "later", "next", "now", "met")}
+    entry = lambda p, d: type("E", (), {"realpath": p, "path": p, "duration": d})()
+    monkeypatch.setattr(loudness, "StationManager", lambda: type("S", (), {"stations": [{"_has_catalog": True}]})())
+    monkeypatch.setattr(loudness.CatalogAPI, "get_entries",
+                        lambda s: [entry(files["ad"], 30), entry(files["later"], 1800), entry(files["next"], 1800),
+                                   entry(files["now"], 1800), entry(files["met"], 1800)])
+    t = datetime.datetime.now()
+    monkeypatch.setattr(break_finder, "upcoming", lambda stations, on_air=False: on_air and {
+        files["now"]: (t - datetime.timedelta(minutes=10), {"A"}), files["next"]: (t + datetime.timedelta(minutes=20), {"A"})})
+    monkeypatch.setattr(loudness, "_save", lambda: None)
+    monkeypatch.setattr(loudness, "LEVELLED", str(tmp_path / "levelled"))
+    measured = []
+    monkeypatch.setattr(loudness, "measure", lambda p: measured.append(os.path.basename(p)) or -24.0)
+    loudness._queued.add(files["met"])
+    loudness.scan_new_files()
+    assert measured == ["met.mp4", "now.mp4", "next.mp4", "ad.mp4", "later.mp4"]
+
+
+def test_a_playing_file_measured_before_the_check_is_queued(tmp_path, known):
+    path = _make(tmp_path / "b.mp4", "pan=stereo|c0=c0|c1=-1*c0")
+    known[path] = {"size": (tmp_path / "b.mp4").stat().st_size, "lufs": -24.0}
+    loudness._queued.discard(path)
+    loudness.audio_filter(path)
+    assert path in loudness._queued
