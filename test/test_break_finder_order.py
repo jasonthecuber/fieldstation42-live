@@ -1,3 +1,5 @@
+import datetime
+import json
 import os
 import sqlite3
 from types import SimpleNamespace as NS
@@ -9,28 +11,72 @@ def episode(path, realpath=None, dbid=1):
     return NS(path=path, realpath=realpath, dbid=dbid, content_type="feature", duration=1500, title=path)
 
 
-def test_stations_with_fewest_left_go_first_and_come_back_when_done(monkeypatch):
-    big = {"network_name": "Big", "_has_catalog": True, "_has_schedule": True}
-    small = {"network_name": "Small", "_has_catalog": True, "_has_schedule": True}
-    entries = {"Big": [episode(f"/b{i}") for i in range(3)], "Small": [episode("/s0")]}
-    scanned, pending = [], set()
-    monkeypatch.setattr(break_finder, "StationManager", lambda: NS(stations=[big, small]))
+def _scanner(monkeypatch, stations, entries, soon=None, shared=None):
+    scanned, stored, pending = [], {}, set()
+    monkeypatch.setattr(break_finder, "StationManager", lambda: NS(stations=stations))
     monkeypatch.setattr(break_finder, "CatalogAPI", NS(get_entries=lambda s: entries[s["network_name"]]))
     monkeypatch.setattr(break_finder, "FluidBuilder", lambda: None)
     monkeypatch.setattr(break_finder, "follow_moves", lambda s: 0)
-    monkeypatch.setattr(break_finder, "is_scanned", lambda f, p: p in scanned)
-    monkeypatch.setattr(break_finder, "find_breaks", lambda p, d: [300.0, 700.0, 1100.0])
-    monkeypatch.setattr(break_finder, "store", lambda f, p, s: scanned.append(p))
-    monkeypatch.setattr(break_finder, "plays_later", lambda s, p: True)
-    monkeypatch.setattr(break_finder, "_pending", lambda: pending)
-    monkeypatch.setattr(break_finder, "_save_pending", lambda names: None)
+    monkeypatch.setattr(break_finder, "is_scanned", lambda f, p: p in stored)
+    monkeypatch.setattr(break_finder, "find_breaks", lambda p, d: scanned.append(p) or [300.0, 700.0, 1100.0])
+    monkeypatch.setattr(break_finder, "store", lambda f, p, s: stored.__setitem__(p, s))
+    monkeypatch.setattr(break_finder, "upcoming", lambda st: soon or {})
+    monkeypatch.setattr(break_finder, "_pending", lambda: set(pending))
+    monkeypatch.setattr(break_finder, "_save_pending", lambda names: pending.update(names))
+    if shared is None:
+        monkeypatch.setattr(break_finder, "peer_breaks", lambda: {})
+    return scanned, stored, pending
 
-    assert break_finder.scan_new_episodes() == [small]
-    assert scanned == ["/s0"]
-    break_finder.rebuilt([small])  # what the schedule keeper does after rebuilding
-    pending.discard("Small")
-    assert break_finder.scan_new_episodes() == [big]
-    assert scanned == ["/s0", "/b0", "/b1", "/b2"]
+
+def station(name):
+    return {"network_name": name, "_has_catalog": True, "_has_schedule": True}
+
+
+def test_what_plays_soonest_goes_first_then_channels_with_fewest_left(monkeypatch):
+    big, small = station("Big"), station("Small")
+    entries = {"Big": [episode(f"/b{i}") for i in range(3)], "Small": [episode("/s0")]}
+    at = datetime.datetime(2026, 11, 13, 20)
+    soon = {"/b2": (at, {"Big"}), "/b1": (at + datetime.timedelta(hours=1), {"Big", "Small"})}
+    scanned, stored, pending = _scanner(monkeypatch, [big, small], entries, soon)
+
+    assert break_finder.scan_new_episodes() == ([big, small], False)
+    assert scanned == ["/b2", "/b1", "/s0", "/b0"]
+    assert pending == {"Big", "Small"}
+
+
+def test_an_hour_of_scanning_hands_back_the_schedules_to_rebuild(monkeypatch):
+    big = station("Big")
+    entries = {"Big": [episode(f"/b{i}") for i in range(3)]}
+    soon = {"/b0": (datetime.datetime(2026, 11, 13, 20), {"Big"})}
+    scanned, stored, pending = _scanner(monkeypatch, [big], entries, soon)
+    monkeypatch.setattr(break_finder, "REBUILD_EVERY", 0)
+
+    assert break_finder.scan_new_episodes() == ([big], True)  # one scanned, then back
+    assert scanned == ["/b0"]
+    assert break_finder.scan_new_episodes() == ([big], True)
+    assert break_finder.scan_new_episodes() == ([big], False)
+    assert scanned == ["/b0", "/b1", "/b2"]
+
+
+def test_the_same_file_scanned_on_another_box_takes_its_breaks(tmp_path, monkeypatch):
+    same, other = tmp_path / "Show S01E01.mkv", tmp_path / "Show S01E02.mkv"
+    same.write_bytes(b"x" * 10)
+    other.write_bytes(b"x" * 10)
+    peers = tmp_path / "peer_breaks"
+    peers.mkdir()
+    theirs = [{"chapter_start": 0.0, "chapter_end": 300.0}]
+    (peers / "crumpet.json").write_text(json.dumps({"files": [
+        ["Show S01E01.mkv", 10, theirs], ["Show S01E02.mkv", 11, []]]}))  # E02's size differs: not the same file
+    monkeypatch.setattr(break_finder, "PEERS", str(peers))
+    shows = station("Shows")
+    soon = {str(same): (datetime.datetime(2026, 11, 13, 20), {"Shows"})}
+    scanned, stored, pending = _scanner(monkeypatch, [shows], {"Shows": [episode(str(same)), episode(str(other))]},
+                                        soon, shared=True)
+
+    assert break_finder.scan_new_episodes() == ([shows], False)
+    assert stored[str(same)] == theirs
+    assert scanned == [str(other)]
+    assert pending == {"Shows"}
 
 
 def test_moved_folders_are_followed_with_their_breaks(tmp_path, monkeypatch):

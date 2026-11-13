@@ -16,6 +16,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import time
 from contextlib import closing
 
 from fs42.catalog_api import CatalogAPI
@@ -37,14 +38,21 @@ EDGE = 20  # seconds; how close to the start or end a break may be (after a cold
 FEWEST_BREAKS = 3  # fewer found isn't a pattern to trust...
 LONGEST_ACT = 960  # ...unless they leave no act longer than this
 PENDING = "runtime/break_finder_rebuild.json"  # stations whose schedules still need the new breaks
+PEERS = "runtime/peer_breaks"  # our other boxes' breaks, one file each (Control Room's sharing fetches them)
+REBUILD_EVERY = 3600  # seconds of scanning before the schedules get the breaks found so far
 
 
 def scan_new_episodes():
-    """Finds breaks in each episode not scanned yet. Returns the stations to rebuild: those
-    whose built schedule plays any of those episodes later on, so it was planned without them.
-    They're kept on disk until rebuilt, since a scan takes hours and the server may restart.
-    A station is returned as soon as its own episodes are done, and the stations with the
-    fewest left go first, so a big new show on one channel doesn't hold up the rest for days."""
+    """Finds breaks in each episode not scanned yet. Returns the stations to rebuild (those whose
+    built schedule plays any of those episodes later on, so it was planned without them) and
+    whether any episodes are still left. They're kept on disk until rebuilt, since the server
+    may restart.
+
+    An episode another box already scanned (the same file there: same name and size) takes its
+    breaks from there. The rest go by what plays soonest on any channel's built schedule, so
+    what's about to air has its breaks first; then the episodes not on the schedule yet, the
+    channels with the fewest left first. After an hour of scanning it returns, so schedules get
+    the breaks found so far and the order is worked out again from the schedules as they are."""
     fluid = FluidBuilder()
     pending = _pending()
     stations = [s for s in StationManager().stations if s.get("_has_catalog")]
@@ -54,26 +62,96 @@ def scan_new_episodes():
                                 if e.content_type == "feature" and e.duration >= SHORTEST_EPISODE
                                 and not is_scanned(fluid, e.realpath or os.path.realpath(e.path))]
             for s in stations}
+    soon = upcoming(stations)
+    shared = peer_breaks()
+    left, seen, took = [], set(), 0
     for station in sorted(stations, key=lambda s: len(todo[s["network_name"]])):
-        name = station["network_name"]
-        for entry in todo[name]:
+        for entry in todo[station["network_name"]]:
             path = entry.realpath or os.path.realpath(entry.path)
-            try:
-                points = find_breaks(path, entry.duration)
-            except (OSError, subprocess.CalledProcessError) as e:
-                _l.warning(f"break finder: can't scan {path}: {e}")
+            if path in seen:
                 continue
-            if points:
-                _l.info(f"break finder: {entry.title}: breaks at {', '.join(clock(p) for p in points)}")
-            else:
-                _l.info(f"break finder: {entry.title}: no clear act breaks; keeping evenly spaced ones")
-            store(fluid, path, as_segments(points, entry.duration))
-            if name not in pending and station.get("_has_schedule") and plays_later(station, {path}):
-                pending.add(name)
-                _save_pending(pending)
-        if name in pending:
-            return [station]
-    return []
+            seen.add(path)
+            segments = shared.get(_key(path)) if shared else None
+            if segments is None:
+                left.append((entry, path))
+                continue
+            store(fluid, path, segments)
+            took += 1
+            pending |= soon.get(path, (None, set()))[1]
+    if took:
+        _l.info(f"break finder: {took} episodes' breaks came from another box with the same files")
+        _save_pending(pending)
+    never = datetime.datetime.max
+    left.sort(key=lambda e: soon[e[1]][0] if e[1] in soon else never)  # stable: the rest keep the channels' order
+
+    started = time.monotonic()
+    for i, (entry, path) in enumerate(left):
+        if i and time.monotonic() - started >= REBUILD_EVERY:
+            return _named(stations, pending), True
+        try:
+            points = find_breaks(path, entry.duration)
+        except (OSError, subprocess.CalledProcessError) as e:
+            _l.warning(f"break finder: can't scan {path}: {e}")
+            continue
+        if points:
+            _l.info(f"break finder: {entry.title}: breaks at {', '.join(clock(p) for p in points)}")
+        else:
+            _l.info(f"break finder: {entry.title}: no clear act breaks; keeping evenly spaced ones")
+        store(fluid, path, as_segments(points, entry.duration))
+        playing = soon.get(path, (None, set()))[1] - pending
+        if playing:
+            pending |= playing
+            _save_pending(pending)
+    return _named(stations, pending), False
+
+
+def _named(stations, names):
+    return [s for s in stations if s["network_name"] in names]
+
+
+def upcoming(stations):
+    """{file: (when it next plays, the stations playing it)}, from each built schedule from now on."""
+    now = datetime.datetime.now()
+    soon = {}
+    for station in stations:
+        if not station.get("_has_schedule"):
+            continue
+        for block in LiquidAPI.get_blocks(station) or []:
+            if block.start_time <= now:
+                continue
+            content = block.content if isinstance(block.content, list) else [block.content]
+            for c in content:
+                path = getattr(c, "realpath", None) or (getattr(c, "path", None) and os.path.realpath(c.path))
+                if path:
+                    when, names = soon.get(path, (block.start_time, set()))
+                    soon[path] = (min(when, block.start_time), names | {station["network_name"]})
+    return soon
+
+
+def peer_breaks():
+    """Our other boxes' breaks, {(file name, size): segments}, as Control Room fetched them."""
+    shared = {}
+    try:
+        names = sorted(os.listdir(PEERS))
+    except FileNotFoundError:
+        return shared
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        try:
+            with open(os.path.join(PEERS, name)) as f:
+                for file, size, segments in json.load(f).get("files", []):
+                    shared[(file, size)] = segments
+        except (OSError, ValueError, TypeError, AttributeError) as e:
+            _l.warning(f"break finder: can't read {name}'s breaks: {e}")
+    return shared
+
+
+def _key(path):
+    try:
+        return os.path.basename(path), os.path.getsize(path)
+    except OSError:
+        return None
 
 
 def rebuilt(stations):
@@ -144,16 +222,6 @@ def is_scanned(fluid, path):
 def store(fluid, path, segments):
     with closing(sqlite3.connect(fluid.db_path)) as db:
         FluidStatements.add_break_points(db, path, segments)
-
-
-def plays_later(station, paths):
-    now = datetime.datetime.now()
-    for block in LiquidAPI.get_blocks(station):
-        if block.start_time > now:
-            content = block.content if isinstance(block.content, list) else [block.content]
-            if any(c is not None and c.realpath in paths for c in content):
-                return True
-    return False
 
 
 def clock(seconds):

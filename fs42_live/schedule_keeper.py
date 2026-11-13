@@ -106,24 +106,44 @@ def _refresh_quietly(started=None):
 
 async def keep_breaks_found():
     while True:
+        more = False
         try:
-            replan = await asyncio.to_thread(scan_new_episodes)
+            replan, more = await asyncio.to_thread(scan_new_episodes)
             if replan:
                 await asyncio.to_thread(rebuild, replan)
         except Exception:
             _l.exception("break finder: scan failed")
-        await asyncio.sleep(CHECK_EVERY)
+        if not more:  # with episodes left, it goes straight on
+            await asyncio.sleep(CHECK_EVERY)
 
 
 def rebuild(stations):
-    """For schedules planned before their episodes' breaks were found. A reset rewinds each
-    show to the episode that started today and rebuilds from midnight, so today's lineup stays."""
+    """For schedules planned before their episodes' breaks were found. A channel is planned again
+    from the end of what's on now, as replan does, so what's on the air isn't touched. One that
+    can't be (not a standard channel, or nothing on now) is reset: each show rewinds to the
+    episode that started today and it's rebuilt from midnight, so today's lineup stays."""
     with _busy:
+        manager = StationManager()
         for station in stations:
-            _l.info(f"break finder: rebuilding {station['network_name']}'s schedule with the new breaks")
-            LiquidManager().reset_schedule(station)
+            name = station["network_name"]
+            _l.info(f"break finder: rebuilding {name}'s schedule with the new breaks")
+            cut = _cut(station) if station.get("_has_schedule") and station["network_type"] == "standard" else None
+            if cut:
+                _plan_ahead(manager.station_by_name(name) or station, manager)
+            else:
+                LiquidManager().reset_schedule(station)
         extend_if_needed()
+        reload_without_gap(LiquidManager())
     rebuilt(stations)
+
+
+def _plan_ahead(station, manager):
+    threshold = datetime.datetime.now() + TRIGGER_DELTAS[(
+        manager.server_conf.get("schedule_agent") or DEFAULT_CONF)["trigger_add_at"]]
+    for _ in range(3):  # from a weekday, the first add only runs to Monday
+        LiquidSchedule(station).add_amount("week")
+        if LiquidAPI.get_blocks(station)[-1].end_time >= threshold:
+            break
 
 
 def replan(network_name):
@@ -144,13 +164,7 @@ def replan(network_name):
             # another box), and then sees nothing new: a show on it with none of its files in the catalog
             update(station, keep_schedule=True)
         if cut:
-            threshold = datetime.datetime.now() + TRIGGER_DELTAS[(
-                manager.server_conf.get("schedule_agent") or DEFAULT_CONF)["trigger_add_at"]]
-            station = StationManager().station_by_name(network_name)
-            for _ in range(3):  # from a weekday, the first add only runs to Monday
-                LiquidSchedule(station).add_amount("week")
-                if LiquidAPI.get_blocks(station)[-1].end_time >= threshold:
-                    break
+            _plan_ahead(StationManager().station_by_name(network_name), manager)
             _l.info(f"schedule keeper: {network_name} planned again from {cut}")
         extend_if_needed()
         reload_without_gap(LiquidManager())
