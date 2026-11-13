@@ -118,6 +118,20 @@ def test_a_game_show_is_listened_to_until_it_never_says_so(monkeypatch):
     assert [looked[f] for f in files] == ["quiet"] * 3 + ["none"] * 2
 
 
+def test_a_show_heard_before_is_still_listened_to_once_it_has_a_pattern(monkeypatch):
+    feud = "/mnt/storage/data/channels/gameshows/Family Feud"
+    stored = {f"{feud}/{i}.mp4": segments([400.0 + i, 700.0, 1400.0]) for i in range(6)}
+    looked = {p: "heard" for p in stored}  # its breaks so far all came from listening, and they teach
+    assert break_patterns.learn(stored, ())  # the show has a pattern now
+    new, said_nothing = f"{feud}/new.mp4", f"{feud}/new2.mp4"
+    scanned, listened = _episodes(monkeypatch, stored, looked, [new, said_nothing],
+                                  cues=lambda p: [] if p == said_nothing else [(455.0, "Stay with us.")])
+    break_finder.scan_new_episodes()
+    assert listened == [new, said_nothing]  # the host still goes first
+    assert stored[new][0]["chapter_end"] == 455.0 and looked[new] == "heard"
+    assert looked[said_nothing] == "usual" and len(stored[said_nothing]) == 4  # then the pattern
+
+
 def test_an_episode_that_cant_be_listened_to_yet_waits(monkeypatch):
     feud = "/mnt/storage/data/channels/gameshows/Family Feud"
     files = [f"{feud}/{i}.mp4" for i in range(2)]

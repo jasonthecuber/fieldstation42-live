@@ -163,6 +163,7 @@ class Hearing:
     def __init__(self, looked):
         self.works, self.broken = break_listener.available(), False
         self.quiet, self.heard = defaultdict(int), set()
+        self.done = {path for path, how in looked.items() if how in ("heard", "quiet")}  # listened to already
         for path, how in looked.items():
             if how == "quiet":
                 self.quiet[show_of(path)] += 1
@@ -171,10 +172,11 @@ class Hearing:
 
     def worth(self, path, duration):
         show = show_of(path)
-        return (self.works and duration < break_listener.LONGEST
+        return (self.works and duration < break_listener.LONGEST and path not in self.done
                 and (show in self.heard or self.quiet[show] < QUIET_AFTER))
 
     def heard_it(self, path, any_cue):
+        self.done.add(path)
         if any_cue:
             self.heard.add(show_of(path))
         else:
@@ -182,12 +184,17 @@ class Hearing:
 
 
 def second_look(path, duration, patterns, hearing):
-    """(points, how) for an episode with no clear breaks; how is None when it should wait."""
-    pattern = patterns.get(show_of(path))
-    if pattern is not None and pattern.fits(duration):
+    """(points, how) for an episode with no clear breaks; how is None when it should wait.
+    A show whose host has been heard saying they'll be right back is listened to before its
+    pattern is used (a game show's breaks move more than a sitcom's, and the host is the
+    better guide); any other show with a pattern just gets the closer look."""
+    show = show_of(path)
+    pattern = patterns.get(show)
+    fits = pattern is not None and pattern.fits(duration)
+    if fits and show not in hearing.heard:
         return look_closer(path, duration, pattern)
     if not hearing.worth(path, duration):
-        return [], "none"
+        return look_closer(path, duration, pattern) if fits else ([], "none")
     if hearing.broken:
         return [], None
     cues = break_listener.listen(path)
@@ -196,7 +203,9 @@ def second_look(path, duration, patterns, hearing):
         return [], None
     points = _apart(sorted(t for t, _ in cues if EDGE <= t <= duration - EDGE))
     hearing.heard_it(path, bool(points))
-    return points, "heard" if points else "quiet"
+    if points:
+        return points, "heard"
+    return look_closer(path, duration, pattern) if fits else ([], "quiet")
 
 
 def _clocks(points):
