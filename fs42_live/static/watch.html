@@ -270,8 +270,14 @@
             if (raw) {
                 video.disableRemotePlayback = true; // iOS's ManagedMediaSource wants this
                 // autoCleanup drops video already played (the default keeps all of it, hours on a TV left on)
+                // Falling behind live is caught up by playing a little faster (liveSync), not by jumping ahead:
+                // a jump on a slow TV stick freezes the picture while the sound goes on, and the buffer swells
+                // most where one clip hands off to the next (each starts early), so that's where it showed.
+                // Jumping is kept only for a long stall, and then leaves 2 s in hand.
                 player = mpegts.createPlayer({ type: "mpegts", isLive: true, url: `/live/stream/${ch.channel}.ts?surf=1${zoomArg()}` },
-                    { enableStashBuffer: false, liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 3,
+                    { enableStashBuffer: false,
+                      liveSync: true, liveSyncMaxLatency: 3.5, liveSyncTargetLatency: 2.5, liveSyncPlaybackRate: 1.05,
+                      liveBufferLatencyChasing: true, liveBufferLatencyMaxLatency: 12, liveBufferLatencyMinRemain: 2,
                       autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 30, autoCleanupMinBackwardDuration: 10 });
                 player.attachMediaElement(video);
                 player.load();
