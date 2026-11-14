@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import os
 
@@ -333,10 +334,28 @@ async def report_problem(request: Request):
         raise HTTPException(status_code=400, detail="Say what's wrong")
     file = body.get("file")
     watching = (file, float(body.get("at") or 0)) if file and ondemand.allowed(station, file) else None
+    clip, issue = body.get("clip"), int(body.get("issue") or 0)
+    if clip:  # one ad or bumper picked by name, and what's wrong with it (#90)
+        if not await asyncio.to_thread(reports.is_clip, station, str(clip)):
+            raise HTTPException(status_code=400, detail="That isn't one of this channel's ads or bumpers")
+        if issue not in reports.ISSUES or (issue == 5 and not note.strip()):
+            raise HTTPException(status_code=400, detail="Say what's wrong")
     saved = await asyncio.to_thread(reports.save, station, pick, note, float(body.get("ago") or 0),
-                                    request.headers.get("user-agent", ""), watching)
-    _l.info(f"problem report #{saved['number']}: ch {saved['channel']} {saved['problem']} {saved['note']!r}")
+                                    request.headers.get("user-agent", ""), watching, clip and str(clip), issue)
+    _l.info(f"problem report #{saved['number']}: ch {saved['channel']} {saved['problem']} {saved['note']!r}"
+            + (f" {saved['clip']['name']!r}: {saved['issue']}" if clip else ""))
     return {"saved": True, "number": saved["number"]}
+
+
+@router.get("/report/clips/{channel}")
+async def report_clips(channel: int, ago: float = 0):
+    """The ads and bumpers the channel played in the few minutes before the viewer opened the menu
+    (`ago` seconds back), the latest first, for "Bumper or ad problem" to pick from (#90)."""
+    station = _station(channel)
+    if station["network_type"] == "web":
+        return []
+    until = datetime.datetime.now() - datetime.timedelta(seconds=max(0.0, min(ago, 3600)))
+    return await asyncio.to_thread(reports.recent_clips, station["network_name"], until)
 
 
 @router.post("/player/log")

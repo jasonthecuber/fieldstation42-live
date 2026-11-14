@@ -16,6 +16,12 @@ STORE = "runtime/reports.jsonl"  # one report per line, oldest first
 LOOK_BACK = 35  # seconds of schedule saved before the menu opened
 PICKS = {1: "Bumper or ad problem", 2: "Static or frozen", 3: "Sound problem", 4: "Wrong show or listing", 5: "Something else"}
 NUDGE = datetime.timedelta(milliseconds=1)  # at exactly a block's end the schedule has no answer
+# "Bumper or ad problem", about one picked by name (#90): what's wrong with it. The first takes it off the box
+ISSUES = {1: "Take it off this box", 2: "Wrong channel for it", 3: "Picture and sound out of step",
+          4: "Played at the wrong time (not at a break)", 5: "Something else"}
+CLIPS_BACK = 240  # seconds of schedule looked through for the ads and bumpers to pick from
+CLIPS_MOST = 6
+UNSEEN = 4  # seconds: one the schedule started this close to the menu opening isn't on the screen yet
 
 _lock = threading.Lock()
 
@@ -40,8 +46,50 @@ def what_played(network, until, seconds=LOOK_BACK):
     return played
 
 
-def save(station, pick, note, ago, agent, ondemand=None):
-    """`ondemand` is (file, seconds into it) when the viewer was watching on demand, not the channel."""
+def clip_name(path):
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def recent_clips(network, until, seconds=CLIPS_BACK, most=CLIPS_MOST):
+    """The commercials and bumpers the schedule played in the `seconds` before `until`, the latest first,
+    each once: [{"file", "name", "kind" ("commercial" or "bump")}]."""
+    found, when = [], until - datetime.timedelta(seconds=seconds)
+    last = until - datetime.timedelta(seconds=UNSEEN)
+    while when < last and len(found) < 400:
+        try:
+            pp = LiquidManager().get_play_point(network, when + NUDGE)
+        except Exception:  # no schedule there
+            break
+        entry = pp.plan[pp.index]
+        if entry.content_type in ("commercial", "bump") and not entry.is_stream:
+            found.append({"file": entry.path, "name": clip_name(entry.path), "kind": entry.content_type})
+        when += datetime.timedelta(seconds=max(entry.duration - pp.offset, 0.1))
+    out, seen = [], set()
+    for c in reversed(found):
+        if c["file"] not in seen and os.path.isfile(c["file"]):
+            seen.add(c["file"])
+            out.append(c)
+    return out[:most]
+
+
+def is_clip(station, path):
+    """"commercial" or "bump" if path is one of the station's (in its commercials or bumpers folder), else None."""
+    if not path or not os.path.isfile(path):
+        return None
+    folder = os.path.abspath(station.get("content_dir") or "")
+    full = os.path.abspath(path)
+    for kind, key in (("commercial", "commercial_dir"), ("bump", "bump_dir")):
+        sub = station.get(key)
+        if station.get("content_dir") and sub:
+            top = os.path.join(folder, sub)
+            if os.path.commonpath([top, full]) == top:
+                return kind
+    return None
+
+
+def save(station, pick, note, ago, agent, ondemand=None, clip=None, issue=0):
+    """`ondemand` is (file, seconds into it) when the viewer was watching on demand, not the channel.
+    `clip`, the commercial or bumper the report is about, picked by name, with `issue` (ISSUES)."""
     seen = datetime.datetime.now() - datetime.timedelta(seconds=max(0.0, min(ago, 3600)))
     report = {
         "seen": seen.isoformat(timespec="seconds"),
@@ -52,6 +100,9 @@ def save(station, pick, note, ago, agent, ondemand=None):
         "device": agent[:200],
         "played": played(station, seen, ondemand),
     }
+    if clip:
+        report.update(clip={"file": clip, "name": clip_name(clip), "kind": is_clip(station, clip)},
+                      issue=ISSUES.get(issue, ""))
     with _lock:
         with open(STORE, "a") as f:
             f.write(json.dumps(report) + "\n")

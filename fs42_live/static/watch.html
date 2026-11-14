@@ -154,9 +154,29 @@
             <button data-pick="4"><b>4</b>Wrong show or listing</button>
             <button data-pick="5"><b>5</b>Something else</button>
             <input id="note" maxlength="1000" placeholder="Tell us more (optional)" autocomplete="off">
-            <button id="send"><b>&#10003;</b>Send</button>
+            <button id="send" class="send"><b>&#10003;</b>Send</button>
             <p id="reportMsg"></p>
             <p class="note" id="reportWhen"></p>
+        </div>
+        <div class="panel" id="clipPanel" hidden>
+            <button class="back">&lsaquo; Back</button>
+            <h2>Which one?</h2>
+            <div id="clipList"></div>
+            <button id="clipNotListed"><b></b>Not here, or not sure</button>
+            <p class="note" id="clipMsg"></p>
+        </div>
+        <div class="panel" id="issuePanel" hidden>
+            <button class="back">&lsaquo; Back</button>
+            <h2 id="issueTitle"></h2>
+            <p class="note" id="issueKind"></p>
+            <button data-issue="1"><b>1</b>Take it off this box</button>
+            <button data-issue="2"><b>2</b>Wrong channel for it</button>
+            <button data-issue="3"><b>3</b>Picture and sound out of step</button>
+            <button data-issue="4"><b>4</b>Played at the wrong time (not at a break)</button>
+            <button data-issue="5"><b>5</b>Something else</button>
+            <input id="issueNote" maxlength="1000" placeholder="Tell us more (optional)" autocomplete="off">
+            <button id="issueSend" class="send"><b>&#10003;</b>Send</button>
+            <p id="issueMsg"></p>
         </div>
     </div>
     <button id="start">&#9654; Tap to turn on</button>
@@ -755,6 +775,10 @@
         const panels = [...menu.querySelectorAll(".panel")];
         const note = document.getElementById("note"), reportMsg = document.getElementById("reportMsg");
         let openedAt = 0, openedChannel = 0, openedOd = null, pick = 0, sending = false;
+        // "Bumper or ad problem": the ads and bumpers just played, picked by name, then what's wrong with it (#90)
+        const issueNote = document.getElementById("issueNote"), issueMsg = document.getElementById("issueMsg");
+        let clips = null, clipsFor = 0, clip = null, issue = 0, notListed = false;
+        const typingNote = () => document.activeElement === note || document.activeElement === issueNote;
         const odButton = document.getElementById("odButton");
         const menuOpen = () => !menu.hidden;
         const shown = () => panels.find(p => !p.hidden);
@@ -820,6 +844,8 @@
             panels.forEach(p => p.hidden = p.id !== id);
             if (id === "channelPanel") fillChannels();
             if (id === "reportPanel") startReport();
+            if (id === "clipPanel") startClips();
+            if (id === "issuePanel") startIssue();
             document.getElementById("mainMsg").textContent = "";
             if (id === "startPanel") return startChoices();
             if (id === "odPanel") return od ? goOd([od.channel, ...(od.group !== undefined ? [od.group] : [])], od.file) : goOd([]);
@@ -908,6 +934,7 @@
         }
         function startReport() {
             pick = 0;
+            notListed = false;
             sending = false;
             document.getElementById("send").classList.remove("busy");
             note.value = "";
@@ -918,7 +945,74 @@
                 ? `${openedOd.name}, the half minute before ${clock(openedOd.when)}`
                 : `Channel ${openedChannel} ${ch.display || ch.name}, the half minute before ${new Date(openedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}`;
         }
+        function sendReady(button) {
+            sending = false;
+            button.classList.remove("busy");
+        }
+        const clipName = file => file.split("/").pop().replace(/\.[^.]+$/, "");
+        // on demand: the stream's own ads and bumpers before where it was when the menu opened
+        function odClips() {
+            const out = [], pos = openedOd.when;
+            let at = 0;
+            for (const i of od.items || []) {
+                if (at > pos) break;
+                if (i.type !== "feature" && pos - at < 240 && !out.some(c => c.file === i.file))
+                    out.unshift({ file: i.file, name: clipName(i.file), kind: i.type });
+                at += i.duration;
+            }
+            return out.slice(0, 6);
+        }
+        async function startClips() {
+            const list = document.getElementById("clipList"), msg = document.getElementById("clipMsg");
+            const other = document.getElementById("clipNotListed"), opened = openedAt;
+            const fill = () => {
+                list.replaceChildren(...clips.map((c, i) => {
+                    const b = document.createElement("button");
+                    b.dataset.key = i + 1;
+                    b.dataset.clip = i;
+                    b.innerHTML = `<b>${i + 1}</b><small>${c.kind === "bump" ? "Bumper" : "Ad"}</small>`;
+                    b.append(c.name);
+                    return b;
+                }));
+                other.dataset.key = clips.length + 1;
+                other.querySelector("b").textContent = clips.length + 1;
+                msg.textContent = clips.length ? "The latest first" : "None played in the last few minutes";
+                if (document.activeElement === other || !menu.contains(document.activeElement)) firstChoice().focus();
+            };
+            if (clips && clipsFor === opened) return fill();
+            clips = [];
+            fill();
+            msg.textContent = "Looking…";
+            try {
+                if (openedOd) clips = odClips();
+                else {
+                    const r = await fetch(`/live/report/clips/${openedChannel}?ago=${(Date.now() - opened) / 1000}`);
+                    if (!r.ok) throw new Error(r.status);
+                    clips = await r.json();
+                }
+                clipsFor = opened;
+            } catch (e) {
+                clips = [];
+            }
+            if (opened === openedAt && shown()?.id === "clipPanel") fill();
+        }
+        function startIssue() {
+            issue = 0;
+            issueNote.value = "";
+            issueMsg.textContent = "";
+            sendReady(document.getElementById("issueSend"));
+            document.querySelectorAll("[data-issue]").forEach(b => b.classList.remove("on"));
+            document.getElementById("issueTitle").textContent = clip.name;
+            document.getElementById("issueKind").textContent = `${clip.kind === "bump" ? "Bumper" : "Ad"}: what's wrong with it?`;
+        }
+        function chooseIssue(n) {
+            issue = n;
+            document.querySelectorAll("[data-issue]").forEach(b => b.classList.toggle("on", Number(b.dataset.issue) === n));
+            issueMsg.textContent = n === 5 ? "Say what's wrong, then Send" : "";
+            (n === 5 ? issueNote : document.getElementById("issueSend")).focus();
+        }
         function choose(n) {
+            if (n === 1 && !notListed) return showPanel("clipPanel"); // which one first (#90)
             pick = n;
             document.querySelectorAll("[data-pick]").forEach(b => b.classList.toggle("on", Number(b.dataset.pick) === n));
             reportMsg.textContent = n === 5 ? "Say what's wrong, then Send" : "";
@@ -926,26 +1020,30 @@
         }
         async function send() {
             if (sending) return; // a second press while it goes (or after it's saved) would send it twice
-            if (!pick && !note.value.trim()) { reportMsg.textContent = "Pick what's wrong first (1 to 5)"; return; }
-            if (pick === 5 && !note.value.trim()) { reportMsg.textContent = "Say what's wrong, then Send"; note.focus(); return; }
+            const onClip = shown().id === "issuePanel"; // one ad or bumper, picked by name
+            const text = onClip ? issueNote : note, msg = onClip ? issueMsg : reportMsg, n = onClip ? issue : pick;
+            if (!n && (onClip || !text.value.trim())) { msg.textContent = "Pick what's wrong first (1 to 5)"; return; }
+            if (n === 5 && !text.value.trim()) { msg.textContent = "Say what's wrong, then Send"; text.focus(); return; }
             sending = true;
-            const button = document.getElementById("send");
+            const button = shown().querySelector(".send");
             button.classList.add("busy");
-            if (document.activeElement === note) button.focus(); // a phone's keyboard goes away, so the message shows
-            reportMsg.textContent = "Sending…";
+            if (document.activeElement === text) button.focus(); // a phone's keyboard goes away, so the message shows
+            msg.textContent = "Sending…";
             try {
                 const r = await fetch("/live/report", { method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ channel: openedChannel, pick, note: note.value, ago: (Date.now() - openedAt) / 1000,
-                                           file: openedOd?.file, at: openedOd?.at }) });
+                    body: JSON.stringify({ channel: openedChannel, pick: onClip ? 1 : pick, note: text.value,
+                                           ago: (Date.now() - openedAt) / 1000, file: openedOd?.file, at: openedOd?.at,
+                                           ...(onClip ? { clip: clip.file, issue } : {}) }) });
                 if (!r.ok) throw new Error(r.status);
                 const saved = await r.json();
                 if (!saved.number) throw new Error("not saved");
-                reportMsg.textContent = `Thanks! Saved as report #${saved.number}.`;
-                setTimeout(closeMenu, 1500);
+                const off = onClip && issue === 1;
+                msg.textContent = off ? `Thanks! It will be off this box within a minute (report #${saved.number}).`
+                                      : `Thanks! Saved as report #${saved.number}.`;
+                setTimeout(closeMenu, off ? 2500 : 1500);
             } catch (e) {
-                reportMsg.textContent = "Couldn't send it; try again";
-                sending = false;
-                button.classList.remove("busy");
+                msg.textContent = "Couldn't send it; try again";
+                sendReady(button);
             }
         }
         menu.addEventListener("click", e => {
@@ -954,7 +1052,10 @@
             if (b.dataset.go) showPanel(b.dataset.go);
             else if ("close" in b.dataset) closeMenu();
             else if (b.dataset.pick) choose(Number(b.dataset.pick));
-            else if (b.id === "send") send();
+            else if (b.dataset.clip) { clip = clips[Number(b.dataset.clip)]; showPanel("issuePanel"); }
+            else if (b.id === "clipNotListed") { showPanel("reportPanel"); notListed = true; choose(1); }
+            else if (b.dataset.issue) chooseIssue(Number(b.dataset.issue));
+            else if (b.classList.contains("send")) send();
             else if (b.id === "odButton") { if (od) { closeMenu(); backToLive(); } else showPanel("startPanel"); }
             else if (b.dataset.retro) pickFromStart(b.dataset.retro);
             else if (b.classList.contains("back")) menuBack();
@@ -965,6 +1066,8 @@
 
         function menuBack() { // (the remote's Back, or the Back button)
             if (shown().id === "odPanel" && odLevel.length) goOd(odLevel.slice(0, -1), odLevel[odLevel.length - 1]);
+            else if (shown().id === "issuePanel") showPanel("clipPanel");
+            else if (shown().id === "clipPanel") showPanel("reportPanel");
             else showPanel("mainPanel");
         }
 
@@ -992,7 +1095,7 @@
 
         // true if the menu took the key
         function menuKeys(e) {
-            const k = e.key, typing = document.activeElement === note;
+            const k = e.key, typing = typingNote();
             const info = e.keyCode === 457 || k === "Info" || k === "ContextMenu" || (!typing && (k === "i" || k === "m"));
             if (!menuOpen()) {
                 if (!info) return false;
@@ -1015,7 +1118,7 @@
             } else if (/^[0-9]$/.test(k) && !typing) {
                 const panel = shown().id;
                 if (panel === "channelPanel") { closeMenu(); return false; } // typed channel numbers work as usual
-                const b = shown().querySelector(`[data-key="${k}"], [data-pick="${k}"]`);
+                const b = shown().querySelector(`[data-key="${k}"], [data-pick="${k}"], [data-issue="${k}"]`);
                 if (b) b.click();
             } else if (typing) return true; // letters, spaces and arrows for the note
             else return true;
