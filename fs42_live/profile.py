@@ -26,6 +26,9 @@ class OutputProfile:
         # `bars` (bars.crop_filter) cuts off black bars made part of the picture before any of that.
         # `logos` (logos.logo_filter) smudges out channel logos, in the file's own pixels, so first of all.
         # `pan` (panscan.pan_filter) moves that crop to follow the action, instead of keeping the middle.
+        # fps starts at 0, so a clip whose picture starts after its sound (often right where a show's
+        # own commercial was cut out, which is where its breaks go) gets its first picture held from
+        # the start, instead of a gap a player can freeze across.
         w, h = self.width, self.height
         aspect = _aspect(crop_to)
         return (
@@ -34,7 +37,7 @@ class OutputProfile:
             f"scale={w}:{h}:force_original_aspect_ratio=decrease,"
             f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,"
             + (f"{overlay}," if overlay else "") +
-            f"fps={self.fps}," + ("format=nv12,hwupload" if hw else "format=yuv420p")
+            f"fps={self.fps}:start_time=0," + ("format=nv12,hwupload" if hw else "format=yuv420p")
         )
 
     def encode_args(self, hw=False):
