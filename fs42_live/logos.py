@@ -6,8 +6,9 @@ in frames spread through it, for edges that are in the same place in nearly all 
 Short pieces cut from one reel (ads numbered in one folder) are looked at together, a frame or two from each.
 A file not looked at yet (or whose bars haven't been found yet) plays as it is, and is queued.
 
-Control Room can tell it, for a file or a folder: leave its logos showing, or look harder (one it
-missed: in the middle, wider, or there less of the time).
+Control Room can tell it, for a file or a folder: leave its logos showing, look harder (one it
+missed: in the middle, wider, or there less of the time), or smudge close around the logo (something
+that matters sits right beside it: a game show's clock, #94).
 """
 
 import asyncio
@@ -25,7 +26,7 @@ from fs42_live import bars, settings
 _l = logging.getLogger("FS42LIVE")
 
 STORE = "runtime/logos.json"  # realpath -> {"size": bytes, "boxes": [[x, y, w, h], ...], "harder": bool}
-CHOICES = "runtime/logos_choices.json"  # realpath of a file or folder -> "show" or "harder"
+CHOICES = "runtime/logos_choices.json"  # realpath of a file or folder -> "show", "harder" or "close"
 WIDTH = 480  # frames are looked at this wide
 FRAMES = 20
 STATIC = 0.7  # an edge in this share of the frames that show something is part of a logo
@@ -34,6 +35,7 @@ WIDEST = 0.6  # of the picture's width, along the bottom: "www.FuzzyMemories.TV"
 WIDEST_TOP = 0.3  # at the top a wide one is more often the set (a ceiling the camera holds still on)
 HARDER = {"static": 0.5, "least_seconds": 60, "widest": 0.8, "widest_top": 0.8, "corner": False}
 CHECK_EVERY = 600
+PAD = 0.2  # room around a logo's outline, of its size each side (and 3 px): its glow or shadow reaches past it
 EDGE = bytes([0] + [1] * 255)  # translate: any edge -> 1
 
 _lock = threading.Lock()
@@ -73,7 +75,7 @@ def choices():
 
 
 def choice(path):
-    """Control Room's choice for a file, its own or its nearest folder's: "show", "harder" or ""."""
+    """Control Room's choice for a file, its own or its nearest folder's: "show", "harder", "close" or ""."""
     c = choices()
     while path not in c and path not in ("/", ""):
         path = os.path.dirname(path)
@@ -81,8 +83,8 @@ def choice(path):
 
 
 def choose(path, how):
-    """Control Room: a file's or folder's logos left showing ("show"), looked for harder ("harder"), or
-    back to the usual (""). What's under it that's chosen on its own follows this."""
+    """Control Room: a file's or folder's logos left showing ("show"), looked for harder ("harder"), smudged
+    close around ("close"), or back to the usual (""). What's under it that's chosen on its own follows this."""
     path = os.path.realpath(path)
     with _lock:
         c = choices()
@@ -94,7 +96,7 @@ def choose(path, how):
         with open(tmp, "w") as f:
             json.dump(c, f, indent=0)
         os.replace(tmp, CHOICES)
-        if how != "show":  # looked at again, now: not in up to CHECK_EVERY
+        if how in ("", "harder"):  # looked at again, now: not in up to CHECK_EVERY
             _queued.update(p for p in _load() if p == path or p.startswith(path + "/"))
     _wake.set()
 
@@ -117,12 +119,22 @@ def logo_filter(path):
         return ""
     path = os.path.realpath(path)
     with _lock:
-        if choice(path) == "show":
+        how = choice(path)
+        if how == "show":
             return ""
         boxes = _found(path)
         if boxes is False:
             _queued.add(path)
+    if how == "close":
+        boxes = [close(b) for b in boxes or []]
     return "".join(f"delogo=x={x}:y={y}:w={w}:h={h}," for x, y, w, h in boxes or [])
+
+
+def close(box):
+    """A logo's box without the room find leaves around it for a glow: the outline, and a few pixels."""
+    x, y, w, h = box
+    cw, ch = max(4, round(w / (1 + 2 * PAD))), max(4, round(h / (1 + 2 * PAD)))
+    return [x + (w - cw) // 2, y + (h - ch) // 2, cw, ch]
 
 
 def _frame(path, at, w, h):
@@ -253,7 +265,7 @@ def find(path, duration, crop=None, harder=False, pool=None):
     # or shadow reaches past that
     sx, sy, boxes = vw / w, vh / h, []
     for _, bx, by, bw, bh in best.values():
-        px, py = 3 + bw * 0.2, 3 + bh * 0.2
+        px, py = 3 + bw * PAD, 3 + bh * PAD
         x, y = max(1, int((bx - px) * sx)), max(1, int((by - py) * sy))
         boxes.append([x, y, min(int((bw + 2 * px) * sx), vw - x - 1), min(int((bh + 2 * py) * sy), vh - y - 1)])
     return sorted(boxes)

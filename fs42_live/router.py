@@ -133,12 +133,12 @@ async def refresh_catalogs():
 
 @router.post("/logos")
 async def choose_logos(request: Request):
-    """Control Room: {"path": a file or folder, "how": "show" (leave its logos), "harder" (look again, harder)
-    or "" (as usual)}. Takes effect from the next file a channel starts."""
+    """Control Room: {"path": a file or folder, "how": "show" (leave its logos), "harder" (look again, harder),
+    "close" (smudge close around them) or "" (as usual)}. Takes effect from the next file a channel starts."""
     body = await request.json()
     path, how = str(body.get("path") or ""), body.get("how") or ""
-    if how not in ("", "show", "harder") or not os.path.isabs(path) or not os.path.exists(path):
-        raise HTTPException(status_code=400, detail='an existing path, and how: "show", "harder" or ""')
+    if how not in ("", "show", "harder", "close") or not os.path.isabs(path) or not os.path.exists(path):
+        raise HTTPException(status_code=400, detail='an existing path, and how: "show", "harder", "close" or ""')
     logos.choose(path, how)
     _l.info(f"logos: {how or 'as usual'} for {path}")
     return {}
