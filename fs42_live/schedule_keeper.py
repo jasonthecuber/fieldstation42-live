@@ -200,7 +200,7 @@ def stations_changed():
                 MergingCatalog(station, rebuild_catalog=True)
                 os.makedirs(STATE_DIR, exist_ok=True)  # what the catalog watcher compares against
                 with open(os.path.join(STATE_DIR, f"media_{name}.json"), "w") as f:
-                    json.dump(sorted(media_in(station["content_dir"])), f)
+                    json.dump(sorted(media_in(station["content_dir"], station)), f)
             if station.get("_has_schedule") and name not in planned:
                 station = StationManager().station_by_name(name)
                 for _ in range(3):  # from a weekday, the first add only runs to Monday

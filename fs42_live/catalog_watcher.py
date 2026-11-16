@@ -18,6 +18,7 @@ from fs42.catalog_entry import CatalogEntry
 from fs42.catalog_io import CatalogIO
 from fs42.liquid_manager import LiquidManager
 from fs42.catalog import ShowCatalog
+from fs42.media_processor import MediaProcessor
 from fs42.station_manager import StationManager
 
 _l = logging.getLogger("FS42LIVE")
@@ -33,7 +34,7 @@ def refresh_changed_catalogs(keep_schedules=()):
         if not station.get("_has_catalog") or not station.get("content_dir"):
             continue
         name = station["network_name"]
-        now = media_in(station["content_dir"])
+        now = media_in(station["content_dir"], station)
         state = os.path.join(STATE_DIR, f"media_{name}.json")
         try:
             with open(state) as f:
@@ -69,20 +70,53 @@ def folders_emptied(content_dir, before, now):
     link to it) is still there. Deleting the folder itself is a real removal."""
     def tags(entries):
         return {os.path.relpath(e.split("|")[0], content_dir).split(os.sep)[0] for e in entries}
-    return sorted(t for t in tags(before) - tags(now) if os.path.lexists(os.path.join(content_dir, t)))
+    def no_files(folder):  # a show folder of only extras has files; it just isn't on channels any more
+        return not any(not f.startswith(".") for _, _, files in os.walk(folder, followlinks=True) for f in files)
+    return sorted(t for t in tags(before) - tags(now)
+                  if os.path.lexists(os.path.join(content_dir, t)) and no_files(os.path.join(content_dir, t)))
 
 
-def media_in(content_dir):
+def media_in(content_dir, station=None):
+    """Each file in the content folder, "path|size". A show's or movie's extras are left out, as its
+    catalog leaves them out (#98), so a box that had them in its catalog rebuilds it once."""
+    ads = ads_folders(station) if station else set()
     found = set()
     for folder, dirs, files in os.walk(content_dir, followlinks=True):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for file in files:
             if not file.startswith("."):
                 path = os.path.join(folder, file)
+                top = os.path.relpath(path, content_dir).split(os.sep)[0]
+                if station and top not in ads and top != file and MediaProcessor.is_extra(
+                        path, os.path.join(content_dir, top)):
+                    continue
                 try:
                     found.add(f"{path}|{os.path.getsize(path)}")
                 except OSError:
                     pass
+    return found
+
+
+def ads_folders(station):
+    """The station's commercial and bump folders (named anywhere in its config), which aren't shows."""
+    found = set()
+
+    def look(value):
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                if key in ("commercial_dir", "bump_dir"):
+                    try:
+                        folder = ShowCatalog._unpack_bump_dir(inner)[0] if key == "bump_dir" else inner
+                    except ValueError:
+                        folder = None
+                    if isinstance(folder, str) and folder:
+                        found.add(folder.strip("/").split("/")[0])
+                else:
+                    look(inner)
+        elif isinstance(value, list):
+            for inner in value:
+                look(inner)
+    look(station)
     return found
 
 

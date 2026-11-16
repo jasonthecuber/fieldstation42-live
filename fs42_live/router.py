@@ -360,9 +360,28 @@ async def report_clips(channel: int, ago: float = 0):
 
 @router.post("/player/log")
 async def player_log(request: Request):
-    """The web player's errors, stalls and recoveries, so a TV browser's troubles show in the server log."""
-    _l.info(f"player {request.client.host}: {(await request.body()).decode(errors='replace')[:300]}")
+    """The web player's errors, stalls and recoveries, so a TV browser's troubles show in the server log,
+    and in runtime/player.log, which outlasts restarts and updates (#91)."""
+    line = f"player {request.client.host}: {(await request.body()).decode(errors='replace')[:300]}"
+    _l.info(line)
+    _player_log().info(line)
     return {}
+
+
+PLAYER_LOG = "runtime/player.log"
+
+
+def _player_log():
+    """A logger writing to PLAYER_LOG, kept to about 4 MB in all (player.log plus three older ones)."""
+    log = logging.getLogger("FS42PLAYER")
+    if not log.handlers:
+        from logging.handlers import RotatingFileHandler
+        handler = RotatingFileHandler(PLAYER_LOG, maxBytes=1_000_000, backupCount=3, encoding="utf-8")
+        handler.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%Y-%m-%d %H:%M:%S"))
+        log.addHandler(handler)
+        log.setLevel(logging.INFO)
+        log.propagate = False
+    return log
 
 
 @router.get("/messages")
