@@ -406,6 +406,8 @@ class ShowCatalog:
                 tag_dir = f"{self.config['content_dir']}/{tag}"
 
             file_list = MediaProcessor._find_media(tag_dir, media_filter)
+            if content_type == "feature":  # fs42_live: a show's extras aren't on the channel
+                file_list = [f for f in file_list if not MediaProcessor.is_extra(f, tag_dir)]
 
             self.clip_index[tag] = MediaProcessor._process_media(file_list, tag, fluid=self.__fluid_builder, content_type=content_type)
             self._l.info(f"--Found {len(self.clip_index[tag])} videos in {tag} folder")
@@ -415,7 +417,8 @@ class ShowCatalog:
             if self.__fluid_builder and not self.skip_chapter_scan:
                 self.__fluid_builder.scan_chapters_for_entries(self.clip_index[tag])
 
-            subdir_clips = MediaProcessor._process_subs(tag_dir, tag, bumpdir=is_bumps, fluid=self.__fluid_builder, content_type=content_type, media_filter=media_filter)
+            subdir_clips = MediaProcessor._process_subs(tag_dir, tag, bumpdir=is_bumps, fluid=self.__fluid_builder, content_type=content_type, media_filter=media_filter,
+                                                         skip_extras=content_type == "feature")
 
             self._l.info(f"--Found {len(subdir_clips)} videos in {tag} subfolders")
             self._l.debug(f"---- {tag} sub folder media listing: {subdir_clips}")

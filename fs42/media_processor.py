@@ -2,6 +2,7 @@ import logging
 import os
 import glob
 import json
+import re
 import sys
 
 # Validate ffmpeg-python package
@@ -251,6 +252,19 @@ class MediaProcessor:
             _l.debug(f"Unexpected error probing {file_name}: {e}")
             return -1, None
 
+    # fs42_live: Jellyfin's extras (by folder, or by the end of the file's name) aren't shows, so a
+    # channel leaves them out; they stay in the library (Noel, #98)
+    EXTRAS_FOLDERS = {"extras", "extra", "featurettes", "behind the scenes", "deleted scenes", "interviews",
+                      "trailers", "samples", "sample", "bonus", "bonus features", "special features"}
+    EXTRAS_ENDING = re.compile(r"-(trailer|sample|featurette|behindthescenes|deleted|deletedscene|interview|extra)$", re.I)
+
+    @staticmethod
+    def is_extra(path, top):
+        """fs42_live: path (under the tag folder top) is an extra, not an episode or a movie."""
+        parts = os.path.relpath(path, top).split(os.sep)
+        return (any(p.lower() in MediaProcessor.EXTRAS_FOLDERS for p in parts[:-1])
+                or bool(MediaProcessor.EXTRAS_ENDING.search(os.path.splitext(parts[-1])[0])))
+
     @staticmethod
     def _find_media(path, media_filter="video") -> list[str]:
         logging.getLogger("MEDIA").debug(f"_find_media scanning for media in {path} with filter={media_filter}")
@@ -341,7 +355,8 @@ class MediaProcessor:
         return hints
 
     @staticmethod
-    def _process_subs(dir_path, tag, bumpdir=False, fluid=None, content_type="feature", media_filter="video"):
+    def _process_subs(dir_path, tag, bumpdir=False, fluid=None, content_type="feature", media_filter="video",
+                      skip_extras=False):
         """Process all subdirectories recursively, collecting hints from all levels"""
         from collections import defaultdict
 
@@ -350,6 +365,7 @@ class MediaProcessor:
         all_files = [
             f for f in MediaProcessor._rfind_media(dir_path, media_filter)
             if os.path.dirname(os.path.abspath(f)) != root
+            and not (skip_extras and MediaProcessor.is_extra(f, dir_path))
         ]
 
         # Group files by their immediate parent directory
