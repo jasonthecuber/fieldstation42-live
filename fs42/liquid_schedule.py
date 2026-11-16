@@ -23,6 +23,8 @@ from fs42.liquid_io import LiquidIO
 from fs42.autobump_agent import AutoBumpAgent
 from fs42.hint_agent import HintAgent
 
+HALF_HOUR_SHOW = 31 * 60  # fs42_live: on_the_hour's half-hour shows run this long at most
+
 # logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s:%(message)s", level=logging.INFO)
 
 # share of a slot that is not content (commercials and break bumps)
@@ -370,6 +372,25 @@ class LiquidSchedule:
             tags.add(ft)
         return tags
 
+    def _half_hour_tag(self, slot_config, tag_str, tag_index, when):
+        """fs42_live: on the half hour, one of a random slot's half-hour shows (the one picked, if it's
+        one); the pick as it was when the slot has none."""
+        tags = slot_config["tags"] if slot_config.get("random_tags") and isinstance(slot_config.get("tags"), list) else []
+        halves = [i for i, t in enumerate(tags) if self._half_hour(t) and not self._hinted_out(t, when)]
+        if not halves or tag_str in {tags[i] for i in halves}:
+            return tag_str, tag_index
+        i = random.choice(halves)
+        return tags[i], i
+
+    def _half_hour(self, tag):
+        """fs42_live: the tag's episodes run half an hour or less (most of them)."""
+        known = self.__dict__.setdefault("_half_hours", {})
+        if tag not in known:
+            lengths = sorted(e.duration for e in (self.catalog.get_all_by_tag(tag) or [])
+                             if tag not in self.conf["clip_shows"] and (e.duration or 0) > 0)
+            known[tag] = bool(lengths) and lengths[len(lengths) // 2] <= HALF_HOUR_SHOW
+        return known[tag]
+
     def _hinted_out(self, tag, when):
         """fs42_live: true when the tag has videos but meta_hints allow none of them at this time."""
         hints = self.conf.get("meta_hints")
@@ -506,6 +527,13 @@ class LiquidSchedule:
                 slot_number = this_slot_number
 
             tag_str,tag_index = SlotReader.get_tag_from_slot(slot_config, current_mark)
+
+            # fs42_live: hour shows on the hour (on_the_hour, Features #98) - on the half hour, a random
+            # slot plays one of its half-hour shows, so the next hour show starts on the hour again: a
+            # half-hour show comes in pairs, and one follows a 90-minute episode
+            if (tag_str is not None and self.conf.get("on_the_hour") and current_mark.minute == 30
+                    and "sequence" not in slot_config):
+                tag_str, tag_index = self._half_hour_tag(slot_config, tag_str, tag_index, current_mark)
 
             # fs42_live: a tag whose every video is kept to other days (meta_hints) has nothing today -
             # a random slot picks another of its tags, otherwise the hour is off the air

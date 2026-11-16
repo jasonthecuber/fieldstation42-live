@@ -44,6 +44,10 @@
           "type": "boolean",
           "description": "Whether the channel is commercial-free"
         },
+        "on_the_hour": {
+          "type": "boolean",
+          "description": "fs42_live: on the half hour, a random slot plays one of its half-hour shows, so hour-long shows start on the hour"
+        },
         "break_duration": {
           "type": "integer",
           "description": "Duration of commercial breaks in seconds"
