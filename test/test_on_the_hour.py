@@ -19,7 +19,8 @@ sys.modules.setdefault("moviepy.editor", MagicMock())
 from fs42.liquid_schedule import LiquidSchedule  # noqa: E402
 
 HALF = datetime.datetime(2026, 11, 15, 17, 30)
-LENGTHS = {"Knight Rider": [2880, 2900, 5400], "Cyberpunk": [1440, 1450], "Clips": [600]}
+LENGTHS = {"Knight Rider": [2880, 2900, 5400], "Cyberpunk": [1440, 1450], "Clips": [600],
+           "Caprica": [180, 200, 240, 300, 300, 2640, 2640, 2700]}
 
 
 def _schedule():
@@ -47,3 +48,8 @@ def test_slot_without_half_hour_shows_keeps_its_pick():
 
 def test_single_tag_slot_keeps_its_pick():
     assert _schedule()._half_hour_tag({"tags": "Knight Rider"}, "Knight Rider", None, HALF) == ("Knight Rider", None)
+
+
+def test_short_extras_dont_make_an_hour_show_a_half_hour_one():
+    slot = {"random_tags": True, "tags": ["Caprica", "Cyberpunk"]}
+    assert _schedule()._half_hour_tag(slot, "Caprica", 0, HALF) == ("Cyberpunk", 1)

@@ -24,6 +24,7 @@ from fs42.autobump_agent import AutoBumpAgent
 from fs42.hint_agent import HintAgent
 
 HALF_HOUR_SHOW = 31 * 60  # fs42_live: on_the_hour's half-hour shows run this long at most
+SHOW_EXTRA = 15 * 60  # fs42_live: a video shorter than this is an extra (a featurette), not an episode
 
 # logging.basicConfig(format="%(asctime)s %(levelname)s:%(name)s:%(message)s", level=logging.INFO)
 
@@ -383,11 +384,12 @@ class LiquidSchedule:
         return tags[i], i
 
     def _half_hour(self, tag):
-        """fs42_live: the tag's episodes run half an hour or less (most of them)."""
+        """fs42_live: the tag's episodes run half an hour or less (most of them; short extras, like
+        Caprica's music videos, don't count)."""
         known = self.__dict__.setdefault("_half_hours", {})
         if tag not in known:
             lengths = sorted(e.duration for e in (self.catalog.get_all_by_tag(tag) or [])
-                             if tag not in self.conf["clip_shows"] and (e.duration or 0) > 0)
+                             if tag not in self.conf["clip_shows"] and (e.duration or 0) >= SHOW_EXTRA)
             known[tag] = bool(lengths) and lengths[len(lengths) // 2] <= HALF_HOUR_SHOW
         return known[tag]
 
