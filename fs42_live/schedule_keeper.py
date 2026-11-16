@@ -230,7 +230,7 @@ def _uncatalogued(station):
 
 
 def _cut(station):
-    """Keeps the schedule up to the end of what's on now (its start, if a file of it is gone, so
+    """Keeps the schedule up to the end of what's on now (its start, if its show's file is gone, so
     something else plays), winds each show's episodes back to its first one after that, and deletes
     the rest. Returns that time, or None if nothing's planned from now."""
     now = datetime.datetime.now()
@@ -239,7 +239,7 @@ def _cut(station):
     if on is None:
         return None
     cut = on.end_time
-    if on.start_time <= now and any(not p.is_stream and not os.path.exists(p.path) for p in on.plan or []):
+    if on.start_time <= now and _gone(on):
         cut = on.start_time
     seen = set()
     for b in blocks:
@@ -252,6 +252,14 @@ def _cut(station):
         db.execute("DELETE FROM liquid_blocks WHERE station = ? AND start_time >= ?",
                    (station["network_name"], cut))
     return cut
+
+
+def _gone(block):
+    """A file of the block's show is gone. A gone ad or bumper doesn't count: the player puts another
+    in its place, and planning the block again from its start would change the show on the air
+    (Features #97: an ad taken off from the TV switched Bewitched to Mork and Mindy at 5:15)."""
+    return any(not p.is_stream and getattr(p, "content_type", None) not in ("commercial", "bump")
+               and not os.path.exists(p.path) for p in block.plan or [])
 
 
 def extend_if_needed():
