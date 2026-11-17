@@ -5,13 +5,17 @@ before the show's last part ends (10 minutes, then 2), only over the show itself
 The bar is the box's own animation when it has one: ART_DIR/art.mov, a short clip with alpha (qtrle or
 png in a .mov), the frame's width, laid over the bottom of the picture, with the title drawn into it. Its
 art.json says where the title goes and when it shows in the clip (ART's keys; any left out are ART's).
-With no art, a plain dark bar fades in and out instead."""
+With no art, a plain dark bar fades in and out instead.
+
+Above the bar, a little picture plays a few silent seconds of the next show, from somewhere in its middle
+(a different spot each time it pops up). art.json's "preview" moves or sizes it, or false turns it off."""
 
 import datetime
 import hashlib
 import json
 import logging
 import os
+import random
 
 from fs42_live import guide, messages
 
@@ -25,11 +29,24 @@ APART = 30.0  # two pop-ups closer than this (a short show) are one
 NEAR = 120.0  # how far one may move to fit in the show (half of BEFORE, if more): its last part is often short
 TEXTS = "/dev/shm/fs42_up_next"
 
-# where the title goes in art.mov at 640x480, and when it shows: fades in over `in`, out over `out`
-ART = {"file": "art.mov", "y": 302, "length": 8.8,
+# where the title goes in art.mov at 640x480 (its full size), and when it shows: fades in over `in`, out
+# over `out`. The art is drawn `scale` its size, kept to the bottom-left corner: moved right `left` and
+# up `lift` (at 640x480), with everything placed in it (the title, the preview) moving with it.
+ART = {"file": "art.mov", "y": 302, "length": 8.8, "scale": 0.55, "left": 16, "lift": 10,
        "text": {"cx": 369, "cy": 387, "w": 364, "size": 34, "color": "0x3a1e11", "shadow": "0xf5c542",
                 "in": [1.2, 1.45], "out": [7.62, 7.75]}}
 PLAIN = {"length": 8.0, "fade": 0.5}
+HEIGHT = 480  # the picture's height where these are drawn
+# the picture of the next show, behind the art: its left edge where the bar's rounded end straightens (x),
+# its bottom tucked behind the bar's top (bottom), w x h big (all in the art's full size); its outline
+# `border` thick; when in the pop-up
+PREVIEW = {"x": 146, "bottom": 353, "w": 256, "h": 192, "border": 3, "color": "0x3a1e11", "rise": 10,
+           "in": 1.5, "out": 7.3, "fade": 0.3}
+# without art: drawn as is (x, y at 640x480) above the plain bar
+PLAIN_PREVIEW = {**PREVIEW, "x": 24, "y": 258, "w": 160, "h": 120, "border": 4, "color": "black",
+                 "in": 0.6, "out": 7.4}
+MIDDLE = (0.3, 0.7)  # the preview comes from this far through the next show
+STILL = (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp")
 
 
 def wanted(station):
@@ -77,13 +94,50 @@ def art():
     except (OSError, ValueError):
         mine = {}
     conf = {**ART, **mine, "text": {**ART["text"], **mine.get("text", {})}}
+    pv = mine.get("preview", {})
+    conf["preview"] = _placed({**PREVIEW, **pv}, conf) if pv is not False else None
     path = os.path.abspath(os.path.join(ART_DIR, conf["file"]))
     return {**conf, "path": path} if os.path.exists(path) else None
 
 
+def _at(conf, x, y):
+    """Where a point of the full-size art lands on the picture."""
+    k = conf["scale"]
+    return conf["left"] + x * k, HEIGHT - conf["lift"] - (HEIGHT - y) * k
+
+
+def _placed(pv, conf):
+    """The preview's settings in the picture's pixels, from the art's."""
+    k = conf["scale"]
+    w, h = 2 * round(pv["w"] * k / 2), 2 * round(pv["h"] * k / 2)
+    x, bottom = _at(conf, pv["x"], pv["bottom"])
+    return {**pv, "w": w, "h": h, "x": round(x), "y": round(bottom) - h - 2 * pv["border"]}
+
+
+def preview_spot(plan, seed, length):
+    """(file, seconds into it) for `length` seconds of the show in `plan`, from somewhere in its middle
+    picked by `seed`; None if it has nothing to show (a stream, stills, parts too short)."""
+    parts, mark = [], 0.0
+    for entry in plan:
+        path = getattr(entry, "path", None)
+        if (getattr(entry, "content_type", None) not in BREAKS and path and not getattr(entry, "is_stream", False)
+                and not path.lower().endswith(STILL) and entry.duration >= length + 4):
+            parts.append((mark, entry))
+        if getattr(entry, "content_type", None) not in BREAKS:
+            mark += entry.duration
+    if not parts:
+        return None
+    want = random.Random(seed).uniform(*MIDDLE) * mark
+    start, entry = min(parts, key=lambda p: 0 if p[0] <= want <= p[0] + p[1].duration
+                       else min(abs(want - p[0]), abs(want - p[0] - p[1].duration)))
+    into = min(max(want - start, 2.0), entry.duration - length - 2.0)
+    return os.path.abspath(entry.path), round(getattr(entry, "skip", 0) + into, 3)
+
+
 def for_segment(station, network, when, duration, manager):
-    """[(seconds into the segment, title)] for pop-ups shown during a show segment playing from `when`
-    for `duration` seconds; [] for a channel without Up next, or with nothing after it."""
+    """[(seconds into the segment, title, preview)] for pop-ups shown during a show segment playing from
+    `when` for `duration` seconds, preview as preview_spot gives it; [] for a channel without Up next, or
+    with nothing after it."""
     if not wanted(station):
         return []
     try:
@@ -98,11 +152,13 @@ def for_segment(station, network, when, duration, manager):
         return []
     look = art()
     length = look["length"] if look else PLAIN["length"]
+    pv = look["preview"] if look else PLAIN_PREVIEW
     out = []
     for at in popups(block.plan, block.start_time, length):
         rel = (at - when).total_seconds()
         if -length < rel < duration:
-            out.append((round(rel, 3), title))
+            spot = pv and preview_spot(nxt.plan or [], f"{nxt.start_time}|{at}", pv["out"] - pv["in"])
+            out.append((round(rel, 3), title, spot or None))
     return out
 
 
@@ -113,8 +169,12 @@ def video_filter(shown, width=640):
         return None
     look = art()
     chain = []
-    for n, (rel, title) in enumerate(shown):
+    for n, (rel, title, *more) in enumerate(shown):
         textfile = _textfile(title)
+        spot = more[0] if more else None
+        pv = look["preview"] if look else PLAIN_PREVIEW
+        if spot and pv:
+            chain.append(_preview(n, rel, spot, pv))
         if look:
             chain.append(_art_popup(n, rel, textfile, ems(title), look))
         else:
@@ -136,19 +196,44 @@ def ems(title):
 
 
 def _art_popup(n, rel, textfile, ems, look):
-    t = look["text"]
+    t, k = look["text"], look["scale"]
     clip = (f"movie={_esc(look['path'])},setpts=PTS+{rel:.3f}/TB" if rel >= 0
             else f"movie={_esc(look['path'])},trim=start={-rel:.3f},setpts=PTS-STARTPTS")
-    size = int(min(t["size"], t["w"] / max(ems, 0.1)))
+    if k != 1:
+        clip += f",scale=iw*{k}:ih*{k}"
+    x0, y0 = _at(look, 0, look["y"])
+    cx, cy = _at(look, t["cx"], t["cy"])
+    size = int(min(t["size"] * k, t["w"] * k / max(ems, 0.1)))
+    shadow = max(1, round(2 * k))
     a, b = rel + t["in"][0], rel + t["in"][1]
     c, d = rel + t["out"][0], rel + t["out"][1]
     alpha = f"if(lt(t,{b:.3f}),(t-{a:.3f})/{b - a:.3f},if(gt(t,{c:.3f}),({d:.3f}-t)/{d - c:.3f},1))"
     return (f"null[un{n}];{clip}[unart{n}];"
-            f"[un{n}][unart{n}]overlay=x=0:y={look['y']}:eof_action=pass,"
+            f"[un{n}][unart{n}]overlay=x={round(x0)}:y={round(y0)}:eof_action=pass,"
             f"drawtext=fontfile={messages.FONT}:textfile={textfile}:expansion=none:fontsize={size}:"
-            f"fontcolor={t['color']}:shadowcolor={t['shadow']}:shadowx=2:shadowy=2:"
-            f"x={t['cx']}-tw/2:y={t['cy']}+{0.36 * size:.1f}-ascent:"
+            f"fontcolor={t['color']}:shadowcolor={t['shadow']}:shadowx={shadow}:shadowy={shadow}:"
+            f"x={cx:.1f}-tw/2:y={cy:.1f}+{0.36 * size:.1f}-ascent:"
             f"enable='between(t,{a:.3f},{d:.3f})':alpha='{alpha}'")
+
+
+def _preview(n, rel, spot, pv):
+    """The next show's picture, rising and fading in above the bar, playing from `spot`; behind the bar."""
+    path, at = spot
+    s, length = rel + pv["in"], pv["out"] - pv["in"]
+    fade = pv["fade"]
+    fades = f"fade=in:st={s:.3f}:d={fade}:alpha=1,"
+    if s < 0:  # the segment starts partway through it
+        at, length, s, fades = at - s, length + s, 0.0, ""
+    if length < 1:
+        return "null"
+    w, h, b = pv["w"], pv["h"], pv["border"]
+    clip = (f"movie={_esc(path)}:seek_point={at:.3f},setpts=PTS-STARTPTS,trim=duration={length:.3f},"
+            f"setpts=PTS+{s:.3f}/TB,scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,"
+            f"pad={w + 2 * b}:{h + 2 * b}:{b}:{b}:color={pv['color']},format=yuva420p,"
+            f"{fades}fade=out:st={s + length - fade:.3f}:d={fade}:alpha=1")
+    y = f"{pv['y']}+{pv['rise']}*max(0,1-(t-{s:.3f})/{fade})" if fades else str(pv["y"])
+    return (f"null[unv{n}];{clip}[unpv{n}];"
+            f"[unv{n}][unpv{n}]overlay=x={pv['x']}:y='{y}':eof_action=pass")
 
 
 def _plain_popup(rel, textfile, width):

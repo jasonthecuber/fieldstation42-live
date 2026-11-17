@@ -74,7 +74,7 @@ def test_for_segment_names_the_next_show_where_it_pops_up():
     # the show ends at 30:00; 20:00 is in the break 19:00-21:00, so that one is just after it, and 28:00
     when = START + datetime.timedelta(minutes=21)
     assert up_next.for_segment(station, "n", when, 540, Manager(blocks())) == [
-        (1.0, "The Price Is Right"), (420.0, "The Price Is Right")]
+        (1.0, "The Price Is Right", None), (420.0, "The Price Is Right", None)]
     when = START + datetime.timedelta(minutes=12)
     assert up_next.for_segment(station, "n", when, 420, Manager(blocks())) == []
 
@@ -112,3 +112,41 @@ def test_a_short_last_part_still_gets_the_two_minute_one():
     # the last part is 12 seconds of credits after the last break: that one comes before the break
     plan = [entry(215), entry(180, "commercial"), entry(1200), entry(180, "commercial"), entry(12)]
     assert mins(up_next.popups(plan, START, 8.8)) == [round(1187 / 60, 2), round((1595 - 1 - 8.8) / 60, 2)]
+
+
+def part(seconds, path, skip=0.0, kind="feature"):
+    return NS(duration=seconds, content_type=kind, path=path, skip=skip, is_stream=False)
+
+
+def test_the_preview_comes_from_the_middle_of_the_next_show():
+    # one episode in three parts (skip into the file), breaks and a still between
+    plan = [part(600, "ep.mkv"), part(120, "ad.mp4", kind="commercial"), part(420, "ep.mkv", 600),
+            part(30, "card.png", kind="commercial"), part(300, "ep.mkv", 1020)]
+    seen = set()
+    for seed in range(40):
+        path, at = up_next.preview_spot(plan, seed, 5.8)
+        assert path == os.path.abspath("ep.mkv")
+        assert 0.3 * 1320 - 6 <= at <= 0.7 * 1320 + 6
+        seen.add(round(at))
+    assert len(seen) > 20  # a different spot each time
+    assert up_next.preview_spot(plan, "a", 5.8) == up_next.preview_spot(plan, "a", 5.8)
+
+
+def test_no_preview_from_stills_or_streams():
+    assert up_next.preview_spot([part(600, "card.png")], 1, 5.8) is None
+    assert up_next.preview_spot([NS(duration=600, content_type="feature", path="http://x", is_stream=True)],
+                                1, 5.8) is None
+    assert up_next.preview_spot([part(5, "ep.mkv")], 1, 5.8) is None
+
+
+def test_the_preview_goes_behind_the_bar(tmp_path, monkeypatch):
+    monkeypatch.setattr(up_next, "TEXTS", str(tmp_path))
+    (tmp_path / "art.mov").write_bytes(b"")
+    monkeypatch.setattr(up_next, "ART_DIR", str(tmp_path))
+    f = up_next.video_filter([(30.0, "Cheers", ("/m/ep.mkv", 700.0)), (-3.0, "Cheers", ("/m/ep.mkv", 900.0))])
+    assert f.count("overlay=") == 4
+    assert f.index("seek_point=700.000") < f.index("art.mov")
+    assert "seek_point=901.500" in f and "trim=duration=4.300" in f  # started 1.5s into it
+    assert not f.startswith("[") and not f.rstrip().endswith("]")
+    (tmp_path / "art.json").write_text('{"preview": false}')
+    assert "seek_point" not in up_next.video_filter([(30.0, "Cheers", ("/m/ep.mkv", 700.0))])
