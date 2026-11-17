@@ -7,11 +7,12 @@ import random
 import shutil
 import time
 from asyncio.subprocess import DEVNULL, PIPE
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from fs42.catalog_api import CatalogAPI
 from fs42.liquid_manager import LiquidManager
-from fs42_live import bars, captions, hwaccel, logos, loudness, messages, panscan
+from fs42.station_manager import StationManager
+from fs42_live import bars, captions, hwaccel, logos, loudness, messages, panscan, up_next
 from fs42_live.profile import RETRO
 from fs42_live.schedule_keeper import refresh_soon
 
@@ -35,6 +36,7 @@ class Segment:
     path: str | None  # None = black slate
     start: float
     duration: float
+    up_next: list = field(default_factory=list)  # [(seconds in, title)]: up_next.for_segment
 
 
 class ScheduledSource:
@@ -152,7 +154,15 @@ class ScheduledSource:
             _l.warning(f"{self.network}: {entry.path} is missing; showing standby")
             return self._slate(min(SLATE_SECONDS, left))
         offset = max(0.0, pp.offset - NUDGE.total_seconds())
-        return Segment(entry.path, entry.skip + offset, entry.duration - offset)
+        seg = Segment(entry.path, entry.skip + offset, entry.duration - offset)
+        if getattr(entry, "content_type", None) not in up_next.BREAKS:
+            try:
+                # the channel's conf as it is now: Up next turned on or off in Channels takes without a restart
+                station = StationManager().station_by_name(self.network) or self.station
+                seg.up_next = up_next.for_segment(station, self.network, when + NUDGE, seg.duration, LiquidManager())
+            except Exception:
+                _l.exception(f"{self.network}: couldn't work out what's up next")
+        return seg
 
     def _stand_in(self, entry, seconds):
         """Another of the channel's commercials (or bumpers, for a bumper) to play in a missing one's
@@ -211,7 +221,8 @@ class ScheduledSource:
             if self.station.get("live_crop_to"):
                 pan, pan_file = panscan.pan_filter(seg.path, seg.start, seg.duration)
 
-        overlay = messages.join(overlay, messages.crawl_filter(self.station["channel_number"], pts))
+        overlay = messages.join(up_next.video_filter(seg.up_next, p.width), overlay,
+                                messages.crawl_filter(self.station["channel_number"], pts))
         hw = await asyncio.to_thread(hwaccel.vaapi)
         vf = p.video_filter(hw, overlay, self.station.get("live_crop_to"), bars.crop_filter(seg.path),
                             logos.logo_filter(seg.path), pan)
