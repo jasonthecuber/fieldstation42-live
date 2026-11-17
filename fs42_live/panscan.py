@@ -6,7 +6,9 @@ the movie's length, with the GPU decoding): every frame for cuts, every 4th for 
 its people are the faces there most of the time and about as big as the biggest; passers-by don't count.
 The window wants all of them if they fit, else whoever's mouth is moving, else the biggest. An operator
 then follows that: it holds still while they stay near the middle, then pans (or cuts, if it's far), and
-waits a moment between moves. What's stored is that: where the window's middle is, shot by shot.
+waits a moment between moves. What's stored is that: where the window's middle is, shot by shot. As it
+plays, a new shot that's short, has no one in it, or wants only a small change keeps the framing it came in
+with, so fast action and quick cutting don't throw the picture about.
 
 It's planned for a 4:3 window; a wider one (14:9, 16:9) follows the same middle. A file not looked at yet
 plays with the middle, as before, and goes next. Control Room can keep a file or folder in the middle.
@@ -51,6 +53,8 @@ CUT_OVER = 0.5  # of the window: farther than this, cut to it
 PAN_SPEED = 0.35  # windows a second
 PAN_SHORTEST, PAN_LONGEST = 0.8, 2.0  # seconds
 MIN_HOLD = 1.5  # seconds between moves
+SHORT_SHOT = 2.0  # seconds: a shot shorter than this keeps the framing it came in with
+SHOT_HOLD = 0.1  # of the picture's width: a new shot wanting the framing less far off than this keeps it
 
 _lock = threading.Lock()
 _known = None
@@ -122,6 +126,21 @@ def _found(path):
     return found if found and found["size"] == size else False
 
 
+def _calm(shots):
+    """A plan's shots as played: a new shot keeps the framing it came in with when it's short, has no one in
+    it (it's stored in the middle, with no moves), or wants the window only a little way off. Fast action
+    looks like a run of quick cuts, and reframing each of those threw the picture about (Features #101).
+    What's stored stays as looked at, so this can change without looking again."""
+    out, pos = [], 0.5
+    for i, (t, x, moves) in enumerate(shots):
+        end = shots[i + 1][0] if i + 1 < len(shots) else float("inf")
+        if end - t < SHORT_SHOT or (x == 0.5 and not moves) or abs(x - pos) <= SHOT_HOLD:
+            x = pos
+        out.append([t, x, moves])
+        pos = moves[-1][2] if moves else x
+    return out
+
+
 def _middle(plan, t):
     """Where the window's middle is, as a share of the picture's width, at t seconds into the file."""
     shots = plan["shots"]
@@ -153,6 +172,7 @@ def pan_filter(path, start, duration):
             _queued.add(path)
     if not plan or not plan["shots"]:
         return "", None
+    plan = {**plan, "shots": _calm(plan["shots"])}
     step = 1 / plan["fps"]
     starts = [s[0] for s in plan["shots"]]
     moves = [(m0, m1) for s in plan["shots"] for m0, m1, _ in s[2]]
