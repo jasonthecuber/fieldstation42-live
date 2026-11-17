@@ -150,3 +150,12 @@ def test_the_preview_goes_behind_the_bar(tmp_path, monkeypatch):
     assert not f.startswith("[") and not f.rstrip().endswith("]")
     (tmp_path / "art.json").write_text('{"preview": false}')
     assert "seek_point" not in up_next.video_filter([(30.0, "Cheers", ("/m/ep.mkv", 700.0))])
+
+
+def test_paths_with_brackets_and_quotes_stay_one_value():
+    # #103: a show folder named "... TVRip x264 [i_c]" cut the movie filter's path at the bracket
+    path = "/media/Show 1960 [i_c]; it's: a, b/ep.mkv"
+    esc = up_next._esc(path)
+    for raw in "[]';,":
+        assert all(esc[i - 1] == "\\" for i, c in enumerate(esc) if c == raw)
+    assert "\[i_c\]" in esc and "\\\:" in esc

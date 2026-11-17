@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import random
+import re
 
 from fs42_live import guide, messages
 
@@ -258,4 +259,7 @@ def _textfile(title):
 
 
 def _esc(path):
-    return path.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'").replace(",", "\\,")
+    """A path as a filter's option value inside a filtergraph: escaped once for the option (\\ ' :), then
+    again for the graph (\\ ' [ ] , ;). Show folders have brackets in them, like "[i_c]" (#103)."""
+    path = re.sub(r"([\\':])", r"\\\1", path)
+    return re.sub(r"([\\'\[\],;])", r"\\\1", path)
