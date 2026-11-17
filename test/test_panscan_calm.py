@@ -21,9 +21,16 @@ def test_a_small_change_keeps_the_framing_and_a_big_one_reframes():
     assert [s[1] for s in _calm(shots)] == [0.3, 0.3, 0.7]
 
 
-def test_a_pan_carries_into_the_next_shot():
+def test_a_shot_holds_where_its_subject_is_most_of_it_with_no_pan():
     shots = [[0, 0.3, [[1, 2, 0.7]]], [4, 0.72, []]]
-    assert [s[1] for s in _calm(shots)] == [0.3, 0.7]
+    calm = _calm(shots)
+    assert [s[1] for s in calm] == [0.7, 0.7]
+    assert all(s[2] == [] for s in calm)
+
+
+def test_a_brief_stray_doesnt_move_the_framing():
+    shots = [[0, 0.3, [[3, 4, 0.7], [5, 6, 0.3]]], [20, 0.3, []]]
+    assert [s[1] for s in _calm(shots)] == [0.3, 0.3]
 
 
 def test_the_stored_plan_is_left_alone():

@@ -7,8 +7,9 @@ its people are the faces there most of the time and about as big as the biggest;
 The window wants all of them if they fit, else whoever's mouth is moving, else the biggest. An operator
 then follows that: it holds still while they stay near the middle, then pans (or cuts, if it's far), and
 waits a moment between moves. What's stored is that: where the window's middle is, shot by shot. As it
-plays, a new shot that's short, has no one in it, or wants only a small change keeps the framing it came in
-with, so fast action and quick cutting don't throw the picture about.
+plays, each shot holds one framing, where its subject is most of the shot, with no panning during it; a new
+shot that's short, has no one in it, or wants only a small change keeps the framing it came in with, so fast
+action and quick cutting don't throw the picture about.
 
 It's planned for a 4:3 window; a wider one (14:9, 16:9) follows the same middle. A file not looked at yet
 plays with the middle, as before, and goes next. Control Room can keep a file or folder in the middle.
@@ -126,18 +127,40 @@ def _found(path):
     return found if found and found["size"] == size else False
 
 
+def _held(t, end, x, moves):
+    """Where a shot's subject is most of the shot: the stored framing, weighted by how long each part lasts
+    (a pan counted as done halfway through)."""
+    parts, at = [], t
+    for m0, m1, to in moves:
+        mid = min(max((m0 + m1) / 2, at), end)
+        parts.append((x, mid - at))
+        x, at = to, mid
+    parts.append((x, end - at))
+    parts.sort()
+    half, run = sum(d for _, d in parts) / 2, 0.0
+    for x, d in parts:
+        run += d
+        if run >= half:
+            return x
+    return parts[-1][0]
+
+
 def _calm(shots):
-    """A plan's shots as played: a new shot keeps the framing it came in with when it's short, has no one in
-    it (it's stored in the middle, with no moves), or wants the window only a little way off. Fast action
-    looks like a run of quick cuts, and reframing each of those threw the picture about (Features #101).
-    What's stored stays as looked at, so this can change without looking again."""
+    """A plan's shots as played: each shot holds one framing, where its subject is most of the shot, with no
+    panning during it; and a new shot keeps the framing it came in with when it's short, has no one in it
+    (it's stored in the middle, with no moves), or wants the window only a little way off. Fast action looks
+    like a run of quick cuts, and reframing each of those threw the picture about, as did following someone
+    around a shot (Features #101). What's stored stays as looked at, so this can change without looking
+    again."""
     out, pos = [], 0.5
     for i, (t, x, moves) in enumerate(shots):
-        end = shots[i + 1][0] if i + 1 < len(shots) else float("inf")
-        if end - t < SHORT_SHOT or (x == 0.5 and not moves) or abs(x - pos) <= SHOT_HOLD:
+        end = shots[i + 1][0] if i + 1 < len(shots) else max([t] + [m[1] for m in moves]) + SHORT_SHOT
+        faceless = x == 0.5 and not moves
+        x = _held(t, end, x, moves)
+        if end - t < SHORT_SHOT or faceless or abs(x - pos) <= SHOT_HOLD:
             x = pos
-        out.append([t, x, moves])
-        pos = moves[-1][2] if moves else x
+        out.append([t, x, []])
+        pos = x
     return out
 
 
