@@ -132,12 +132,13 @@ def show_title(station, title, path=None):
     """FS42 titles a show from its file name ("Ghostbusters.1984.1080p.BluRay.x264"), so a show is titled
     instead by its own folder under the channel's ("Ghostbusters (1984)" lists as Ghostbusters), past
     the channel's own lowercase ones ("crumpet_cartoons/cartoons") and before a season's. `live_title_from`
-    "file" titles it by its whole file name less a date in brackets (one-off broadcasts). `live_titles`
+    "file" titles a video loose in the channel's folders by its whole file name less a date in brackets
+    (one-off broadcasts); one in a show's folder is still titled by the show (#113). `live_titles`
     renames a title: a clip show (music videos) is titled by its folder tag."""
     names = station.get("live_titles", {})
     if title in names:
         return names[title]
-    if path and station.get("live_title_from") == "file":
+    if path and station.get("live_title_from") == "file" and not show_folder(station, path):
         title = re.sub(r"\s*\([^()]*\)$", "", os.path.splitext(os.path.basename(path))[0])
     elif path:
         title = tidy(show_folder(station, path) or title)
