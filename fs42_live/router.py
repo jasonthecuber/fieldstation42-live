@@ -341,7 +341,8 @@ async def report_problem(request: Request):
         if issue not in reports.ISSUES or (issue == 5 and not note.strip()):
             raise HTTPException(status_code=400, detail="Say what's wrong")
     saved = await asyncio.to_thread(reports.save, station, pick, note, float(body.get("ago") or 0),
-                                    request.headers.get("user-agent", ""), watching, clip and str(clip), issue)
+                                    request.headers.get("user-agent", ""), watching, clip and str(clip), issue,
+                                    body.get("player"))
     _l.info(f"problem report #{saved['number']}: ch {saved['channel']} {saved['problem']} {saved['note']!r}"
             + (f" {saved['clip']['name']!r}: {saved['issue']}" if clip else ""))
     return {"saved": True, "number": saved["number"]}

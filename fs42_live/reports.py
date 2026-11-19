@@ -87,9 +87,10 @@ def is_clip(station, path):
     return None
 
 
-def save(station, pick, note, ago, agent, ondemand=None, clip=None, issue=0):
+def save(station, pick, note, ago, agent, ondemand=None, clip=None, issue=0, player=None):
     """`ondemand` is (file, seconds into it) when the viewer was watching on demand, not the channel.
-    `clip`, the commercial or bumper the report is about, picked by name, with `issue` (ISSUES)."""
+    `clip`, the commercial or bumper the report is about, picked by name, with `issue` (ISSUES).
+    `player`, the web player's latest notes on how the picture kept up (#112), kept when there are any."""
     seen = datetime.datetime.now() - datetime.timedelta(seconds=max(0.0, min(ago, 3600)))
     report = {
         "seen": seen.isoformat(timespec="seconds"),
@@ -100,6 +101,9 @@ def save(station, pick, note, ago, agent, ondemand=None, clip=None, issue=0):
         "device": agent[:200],
         "played": played(station, seen, ondemand),
     }
+    notes = [str(n)[:300] for n in player[-12:]] if isinstance(player, list) else []
+    if notes:
+        report["player"] = notes
     if clip:
         report.update(clip={"file": clip, "name": clip_name(clip), "kind": is_clip(station, clip)},
                       issue=ISSUES.get(issue, ""))

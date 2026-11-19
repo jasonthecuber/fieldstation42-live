@@ -80,3 +80,13 @@ def test_save_keeps_the_clip_and_issue(station, monkeypatch):
     assert saved["clip"] == {"file": "catalog/ch/commercial/80s/Ad A.mp4", "name": "Ad A", "kind": "commercial"}
     assert saved["issue"] == "Take it off this box"
     assert reports.recent(1)[0]["clip"]["name"] == "Ad A"
+
+
+def test_save_keeps_the_players_picture_notes(station, monkeypatch):
+    monkeypatch.setattr(reports, "what_played", lambda network, until: [])
+    notes = [f"1:0{i} picture 1.{i} s behind the sound" for i in range(15)] + ["x" * 500]
+    saved = reports.save(station, 2, "", 2, "phone", player=notes)
+    assert len(saved["player"]) == 12 and saved["player"][0] == notes[4] and len(saved["player"][-1]) == 300
+    assert reports.recent(1)[0]["player"] == saved["player"]
+    assert "player" not in reports.save(station, 2, "", 2, "phone", player=[])
+    assert "player" not in reports.save(station, 2, "", 2, "phone", player="not a list")

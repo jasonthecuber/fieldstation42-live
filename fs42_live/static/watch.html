@@ -257,13 +257,74 @@
 
         // what the player runs into, to the server's log, since a TV browser has nowhere to show it
         let tunes = 0, lastLog = 0;
-        function logEvent(event, detail = "") {
-            if (Date.now() - lastLog < 1000) return;
+        function logEvent(event, detail = "", always = false) {
+            if (!always && Date.now() - lastLog < 1000) return;
             lastLog = Date.now();
             const err = video.error ? ` error=${video.error.code}` : "";
             const state = `tunes=${tunes} fails=${fails} ready=${video.readyState} net=${video.networkState}${err} paused=${video.paused}`;
             fetch("/live/player/log", { method: "POST", body: `ch ${channels[current] ? channels[current].channel : "-"} ${event} ${detail} | ${state}` }).catch(() => {});
         }
+
+        // how well the picture keeps up with the sound (#112): a phone or TV stick can fall behind decoding,
+        // so the picture freezes or lags while the sound goes on (the stall check above only sees the sound
+        // stop). Each second: how far the last frame shown is behind the sound, and the frames dropped. A
+        // spell of it goes to the server's log when it starts and when it ends, and the latest notes go
+        // with a problem report.
+        const pictureNotes = [];
+        function pictureNote(text) {
+            pictureNotes.push(`${new Date().toLocaleTimeString()} ${text}`);
+            if (pictureNotes.length > 12) pictureNotes.shift();
+            logEvent("picture", text, true);
+        }
+        let frameAt = null, frameSeen = 0, frameWatch = null;
+        function watchFrames() { // the media time of each frame as it's shown, where the browser says
+            if (!video.requestVideoFrameCallback) return;
+            if (frameWatch !== null) video.cancelVideoFrameCallback(frameWatch);
+            frameWatch = video.requestVideoFrameCallback(function shown(now, meta) {
+                frameAt = meta.mediaTime; frameSeen = Date.now();
+                frameWatch = video.requestVideoFrameCallback(shown);
+            });
+        }
+        let quality = null, drops = [], behindSince = 0, worst = 0, spell = false, lastDropNote = 0, lastSound = -1;
+        function pictureState() {
+            const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+            const ahead = video.buffered.length ? video.buffered.end(video.buffered.length - 1) - video.currentTime : 0;
+            const s = player && player.statisticsInfo, speed = s && s.speed ? ` net ${Math.round(s.speed)} KB/s` : "";
+            return `buffer ${ahead.toFixed(1)} s${speed}` + (q ? `, ${q.totalVideoFrames} frames shown, ${q.droppedVideoFrames} dropped` : "");
+        }
+        setInterval(() => {
+            const watching = channels.length && !video.paused && !document.hidden && snow.classList.contains("hidden");
+            if (!watching) { quality = null; drops = []; behindSince = 0; worst = 0; spell = false; lastSound = -1; return; }
+            const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+            // behind: the sound's time less the last frame's; without frame times, a picture that hasn't
+            // changed while the sound went on a second or more
+            let behind = null;
+            if (frameAt !== null && Date.now() - frameSeen < 60000) behind = Math.max(0, video.currentTime - frameAt);
+            else if (q && quality && lastSound >= 0 && video.currentTime - lastSound > 0.8
+                     && q.totalVideoFrames === quality.totalVideoFrames) behind = video.currentTime - lastSound;
+            if (frameAt !== null && Date.now() - frameSeen > 2000) watchFrames(); // a new stream can drop the watch
+            if (behind !== null && behind > 0.5) { // two seconds running, so a clip's hand-off doesn't count
+                worst = Math.max(worst, behind);
+                if (!behindSince) behindSince = Date.now();
+                else if (!spell) { spell = true; pictureNote(`picture ${behind.toFixed(1)} s behind the sound; ${pictureState()}`); }
+            } else if (behindSince) {
+                if (spell) pictureNote(`picture caught up after ${Math.round((Date.now() - behindSince) / 1000)} s `
+                                       + `(at worst ${worst.toFixed(1)} s behind); ${pictureState()}`);
+                behindSince = 0; worst = 0; spell = false;
+            }
+            // frames dropped: over the last 5 seconds, a note at most every 30 s
+            if (q && quality && q.totalVideoFrames >= quality.totalVideoFrames) {
+                drops.push([q.droppedVideoFrames - quality.droppedVideoFrames, q.totalVideoFrames - quality.totalVideoFrames]);
+                if (drops.length > 5) drops.shift();
+                const dropped = drops.reduce((a, d) => a + d[0], 0), total = drops.reduce((a, d) => a + d[1], 0);
+                if (dropped >= 10 && dropped > total / 10 && Date.now() - lastDropNote > 30000) {
+                    lastDropNote = Date.now();
+                    pictureNote(`dropping frames: ${dropped} of ${total} in the last 5 s; ${pictureState()}`);
+                }
+            } else drops = []; // a new stream counts from 0
+            quality = q && { totalVideoFrames: q.totalVideoFrames, droppedVideoFrames: q.droppedVideoFrames };
+            lastSound = video.currentTime;
+        }, 1000);
 
         function stopPlayer() {
             if (!player) return;
@@ -624,6 +685,8 @@
         let reloaded = false;
         try { reloaded = !!sessionStorage.getItem("fs42-autostart"); } catch (e) {}
         video.addEventListener("playing", () => {
+            frameAt = null; // the last stream's frames don't count
+            watchFrames();
             snow.classList.add("hidden");
             still.hidden = true;
             if (od && odZero === null) odZero = video.currentTime; // where this stream's od.at is
@@ -1033,6 +1096,7 @@
                 const r = await fetch("/live/report", { method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ channel: openedChannel, pick: onClip ? 1 : pick, note: text.value,
                                            ago: (Date.now() - openedAt) / 1000, file: openedOd?.file, at: openedOd?.at,
+                                           player: pictureNotes.slice(-8),
                                            ...(onClip ? { clip: clip.file, issue } : {}) }) });
                 if (!r.ok) throw new Error(r.status);
                 const saved = await r.json();
