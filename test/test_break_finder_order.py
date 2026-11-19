@@ -20,6 +20,7 @@ def _scanner(monkeypatch, stations, entries, soon=None, shared=None):
     monkeypatch.setattr(break_finder, "_stored", lambda f: dict(stored))
     monkeypatch.setattr(break_finder, "_looked", lambda: {})
     monkeypatch.setattr(break_finder, "_save_looked", lambda looked: None)
+    monkeypatch.setattr(break_finder, "_relisten", lambda looked: looked)
     monkeypatch.setattr(break_finder.break_listener, "available", lambda: False)
     monkeypatch.setattr(break_finder, "find_breaks", lambda p, d: scanned.append(p) or [300.0, 700.0, 1100.0])
     monkeypatch.setattr(break_finder, "store", lambda f, p, s: stored.__setitem__(p, s))

@@ -23,7 +23,13 @@ LONGEST = 40 * 60  # seconds; a show this long or longer isn't listened to (movi
 CUE = re.compile(r"\b(?:(?:we'?ll|i'?ll|we will|i will) be (?:right )?back"
                  r"(?: (?:right )?after (?:this|these|that|the \w+|our \w+))?|right back after|be back right after"
                  r"|right after (?:this|these|the|that|our)|after (?:these|this) (?:messages?|words?|break)"
-                 r"|stay (?:tuned|with us|right there)|don'?t go away|when we come back|we'?ll return)\b", re.I)
+                 r"|stay (?:tuned|with us|right there)|don'?t go away|when we come back|we'?ll return"
+                 # Gene Rayburn's, on Match Game: "so you hurry right back", "right after we tell you about
+                 # this", "right now we've got a little message we want you to hear"
+                 r"|hurry (?:right )?back|right after we (?:tell you about|hear about|pause)"
+                 r"|(?:little|short|brief) (?:messages?|breaks?)|messages? (?:we want|for) you to (?:hear|see)"
+                 r"|words? from (?:our|these|this) sponsors?)\b", re.I)
+HEARS = 2  # goes up each time CUE learns new ways of saying it, so shows' quiet episodes are listened to again
 
 _l = logging.getLogger("FS42LIVE")
 

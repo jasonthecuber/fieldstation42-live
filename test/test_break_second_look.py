@@ -64,7 +64,18 @@ def test_the_host_saying_theyll_be_right_back_is_a_cue():
                                          (1040.0, "Right after the message.")]
 
 
-def _episodes(monkeypatch, stored, looked, files, cues=None):
+def test_gene_rayburns_ways_of_saying_so_are_cues_too():
+    for said in ("So you hurry right back because we're all anxious.",
+                 "tell you how that happens right after we tell you about this.",
+                 "but right now we've got a little message we want you to hear.",
+                 "And now a word from our sponsor."):
+        assert break_listener.CUE.search(said), said
+    for said in ("So that's not the right kind of message.", "Would you like to say a few words?",
+                 "He came right back to the desk."):
+        assert not break_listener.CUE.search(said), said
+
+
+def _episodes(monkeypatch, stored, looked, files, cues=None, cues_heard=None):
     st = {"network_name": "Shows", "_has_catalog": True, "_has_schedule": True}
     entries = [NS(path=p, realpath=p, dbid=1, content_type="feature", duration=1500.0, title=p) for p in files]
     scanned, listened = [], []
@@ -75,6 +86,10 @@ def _episodes(monkeypatch, stored, looked, files, cues=None):
     monkeypatch.setattr(break_finder, "_stored", lambda f: dict(stored))
     monkeypatch.setattr(break_finder, "_looked", lambda: dict(looked))
     monkeypatch.setattr(break_finder, "_save_looked", lambda new: looked.update(new))
+    if cues_heard:
+        monkeypatch.setattr(break_finder, "CUES_HEARD", str(cues_heard))
+    else:
+        monkeypatch.setattr(break_finder, "_relisten", lambda looked: looked)
     monkeypatch.setattr(break_finder, "find_breaks", lambda p, d: scanned.append(p) or [])
     monkeypatch.setattr(break_finder, "store", lambda f, p, s: stored.__setitem__(p, s))
     monkeypatch.setattr(break_finder, "upcoming", lambda s: {})
@@ -140,3 +155,26 @@ def test_an_episode_that_cant_be_listened_to_yet_waits(monkeypatch):
     assert break_finder.scan_new_episodes()[1] is False
     assert listened == [files[0]]  # once; the rest wait too
     assert looked == {} and stored == {files[0]: [], files[1]: []}
+
+
+def test_new_ways_of_saying_so_mean_listening_again_to_shows_that_mostly_say_so(monkeypatch, tmp_path):
+    game = "/mnt/storage/data/channels/gameshows/Match Game"
+    sitcom = "/mnt/storage/data/channels/lost80s/Gimme a Break"
+    said, missed = [f"{game}/{i}.mp4" for i in range(2)], f"{game}/2.mp4"
+    quiet = [f"{sitcom}/{i}.mp4" for i in range(3)]
+    stored = {p: segments([300.0, 700.0, 1200.0]) for p in said}
+    stored.update({p: [] for p in [missed] + quiet})
+    looked = {**{p: "heard" for p in said}, missed: "quiet", **{p: "quiet" for p in quiet}}
+    cues_heard = tmp_path / "cues"
+    cues_heard.write_text("1")
+    scanned, listened = _episodes(monkeypatch, stored, looked, said + [missed] + quiet,
+                                  cues=lambda p: [(455.0, "So you hurry right back.")], cues_heard=cues_heard)
+    break_finder.scan_new_episodes()
+    assert listened == [missed] and scanned == []  # the sitcom, quiet as ever, isn't listened to again
+    assert looked[missed] == "heard" and stored[missed][0]["chapter_end"] == 455.0
+    assert cues_heard.read_text() == str(break_listener.HEARS)
+
+    looked[missed], stored[missed] = "quiet", []  # once is enough: the same HEARS doesn't bring it back
+    listened.clear()
+    break_finder.scan_new_episodes()
+    assert listened == []

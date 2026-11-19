@@ -44,6 +44,7 @@ PENDING = "runtime/break_finder_rebuild.json"  # stations whose schedules still 
 PEERS = "runtime/peer_breaks"  # our other boxes' breaks, one file each (Control Room's sharing fetches them)
 LOOKED = "runtime/break_finder_looked.json"  # {episode: how its second look went} (second_look)
 QUIET_AFTER = 3  # episodes of a show listened to with no cue before it isn't listened to any more
+CUES_HEARD = "runtime/break_listener_cues"  # which break_listener.HEARS the quiet episodes were listened with
 REBUILD_EVERY = 3600  # seconds of scanning episodes not on a schedule yet before the order is worked out again
 
 
@@ -70,7 +71,7 @@ def scan_new_episodes():
     stations = [s for s in StationManager().stations if s.get("_has_catalog")]
     for station in stations:
         follow_moves(station)
-    stored, looked = _stored(fluid), _looked()
+    stored, looked = _stored(fluid), _relisten(_looked())
     patterns = learn(stored, {p for p, how in looked.items() if how in UNSURE})
 
     def needs(entry, path):
@@ -225,6 +226,35 @@ def _looked():
             return json.load(f)
     except (FileNotFoundError, ValueError):
         return {}
+
+
+def _relisten(looked):
+    """When the listener has learned new ways of saying "we'll be right back" (its HEARS went
+    up), forgets the quiet episodes of shows whose host announced breaks in at least as many
+    episodes as not, so they're listened to again. Shows that are mostly quiet (sitcoms) aren't."""
+    try:
+        with open(CUES_HEARD) as f:
+            if f.read().strip() == str(break_listener.HEARS):
+                return looked
+    except FileNotFoundError:
+        pass
+    heard, quiet = defaultdict(int), defaultdict(int)
+    for path, how in looked.items():
+        if how == "heard":
+            heard[show_of(path)] += 1
+        elif how == "quiet":
+            quiet[show_of(path)] += 1
+    again = {path for path, how in looked.items()
+             if how == "quiet" and heard[show_of(path)] >= quiet[show_of(path)]}
+    if again:
+        looked = {path: how for path, how in looked.items() if path not in again}
+        _save_looked(looked)
+        _l.info(f"break finder: listening again to {len(again)} quiet episodes of "
+                f"{len({show_of(p) for p in again})} shows, for the new ways of saying they'll be right back")
+    with open(CUES_HEARD + ".new", "w") as f:
+        f.write(str(break_listener.HEARS))
+    os.replace(CUES_HEARD + ".new", CUES_HEARD)
+    return looked
 
 
 def _save_looked(looked):
