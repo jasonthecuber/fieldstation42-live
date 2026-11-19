@@ -133,7 +133,7 @@ class FluidBuilder:
             results = FluidStatements.get_chapter_points(connection, full_path)
         finally:
             connection.close()
-        return results
+        return MediaProcessor.chapters_from_zero(results)  # stored before chapters were shifted to 0
 
     def scan_chapters_for_entries(self, entries):
         """Scan chapter markers for a list of catalog entries that don't have them yet"""

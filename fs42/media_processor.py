@@ -543,6 +543,22 @@ class MediaProcessor:
         return None
 
     @staticmethod
+    def chapters_from_zero(chapters):
+        """Some files mark chapters from a negative time ("-160.7 to 0, 0 to 550.8, ..." in a video that
+        starts at 0): the whole list is shifted back by the first chapter's start, and played as it is
+        an episode would start from before its beginning. Shift it forward to start at 0, the last
+        chapter ending where it did (the file's end)."""
+        if not chapters or chapters[0]["chapter_start"] >= 0:
+            return chapters
+        shift, end = -chapters[0]["chapter_start"], chapters[-1]["chapter_end"]
+        out = []
+        for chapter in chapters:
+            start, stop = min(chapter["chapter_start"] + shift, end), min(chapter["chapter_end"] + shift, end)
+            if stop - start > 0.5:
+                out.append({**chapter, "chapter_start": start, "chapter_end": stop, "segment_duration": stop - start})
+        return out
+
+    @staticmethod
     def chapter_detect(fname, base_duration):
         import subprocess
         import json
@@ -580,6 +596,7 @@ class MediaProcessor:
                     chapters.append(chapter_info)
 
                 _l.info(f"Found {len(chapters)} chapter markers in {fname}")
+                chapters = MediaProcessor.chapters_from_zero(chapters)
 
                 # ensure coverage starts at 0 - handles containers (e.g. MKV) where
                 # the first chapter marker doesn't have to start at 0
