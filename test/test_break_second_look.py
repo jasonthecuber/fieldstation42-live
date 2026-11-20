@@ -68,10 +68,14 @@ def test_gene_rayburns_ways_of_saying_so_are_cues_too():
     for said in ("So you hurry right back because we're all anxious.",
                  "tell you how that happens right after we tell you about this.",
                  "but right now we've got a little message we want you to hear.",
-                 "And now a word from our sponsor."):
+                 "And now a word from our sponsor.",
+                 "And we'll do that in a minute or so after we do a little business.",
+                 "But right now we got to do business friends.", "And about a minute or so.",
+                 "Now as she's spinning off, here, we'll give you this message."):
         assert break_listener.CUE.search(said), said
     for said in ("So that's not the right kind of message.", "Would you like to say a few words?",
-                 "He came right back to the desk."):
+                 "He came right back to the desk.", "I'd never do business with him.",
+                 "I'll be down in a minute.", "Give me a message when you get there."):
         assert not break_listener.CUE.search(said), said
 
 
