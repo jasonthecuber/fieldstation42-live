@@ -16,6 +16,8 @@ STORE = "runtime/reports.jsonl"  # one report per line, oldest first
 LOOK_BACK = 35  # seconds of schedule saved before the menu opened
 PICKS = {1: "Bumper or ad problem", 2: "Static or frozen", 3: "Sound problem", 4: "Wrong show or listing", 5: "Something else"}
 NUDGE = datetime.timedelta(milliseconds=1)  # at exactly a block's end the schedule has no answer
+GAP_STEP = datetime.timedelta(seconds=1)  # through a gap the plan doesn't cover (get_play_point gives None)
+STILLS = (".png", ".jpg", ".jpeg", ".gif")
 # "Bumper or ad problem", about one picked by name (#90): what's wrong with it. The first takes it off the box
 ISSUES = {1: "Take it off this box", 2: "Wrong channel for it", 3: "Picture and sound out of step",
           4: "Played at the wrong time (not at a break)", 5: "Something else"}
@@ -36,6 +38,9 @@ def what_played(network, until, seconds=LOOK_BACK):
         except Exception as e:  # no schedule there
             played.append({"error": str(e)})
             break
+        if pp is None:  # a few seconds the plan doesn't cover, at a block's end: past them
+            when += GAP_STEP
+            continue
         entry = pp.plan[pp.index]
         left = entry.duration - pp.offset
         upto = min(left, (until - when).total_seconds())
@@ -60,8 +65,12 @@ def recent_clips(network, until, seconds=CLIPS_BACK, most=CLIPS_MOST):
             pp = LiquidManager().get_play_point(network, when + NUDGE)
         except Exception:  # no schedule there
             break
+        if pp is None:
+            when += GAP_STEP
+            continue
         entry = pp.plan[pp.index]
-        if entry.content_type in ("commercial", "bump") and not entry.is_stream:
+        if entry.content_type in ("commercial", "bump") and not entry.is_stream \
+                and not entry.path.lower().endswith(STILLS):  # the "be right back" card filling a gap isn't one
             found.append({"file": entry.path, "name": clip_name(entry.path), "kind": entry.content_type})
         when += datetime.timedelta(seconds=max(entry.duration - pp.offset, 0.1))
     out, seen = [], set()

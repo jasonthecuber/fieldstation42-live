@@ -90,6 +90,7 @@
         #menu input { border-color: #888; background: rgba(0,0,0,.3); cursor: text; }
         #menu .note, #menu .keys { font-size: .7em; color: #ccc; margin: .5em 0 0; }
         #menu #reportMsg { color: #ff3; min-height: 1.2em; }
+        #menu #sentMsg { color: #3f3; font-size: 1.1em; }
     </style>
 </head>
 <body>
@@ -157,6 +158,7 @@
             <button id="send" class="send"><b>&#10003;</b>Send</button>
             <p id="reportMsg"></p>
             <p class="note" id="reportWhen"></p>
+            <p class="keys">2 to 4 send it straight away</p>
         </div>
         <div class="panel" id="clipPanel" hidden>
             <button class="back">&lsaquo; Back</button>
@@ -177,6 +179,12 @@
             <input id="issueNote" maxlength="1000" placeholder="Tell us more (optional)" autocomplete="off">
             <button id="issueSend" class="send"><b>&#10003;</b>Send</button>
             <p id="issueMsg"></p>
+            <p class="keys">1 to 4 send it straight away</p>
+        </div>
+        <div class="panel" id="sentPanel" hidden>
+            <h2>Report sent</h2>
+            <p id="sentMsg"></p>
+            <button data-key="0" data-close><b>&#10003;</b>OK</button>
         </div>
     </div>
     <button id="start">&#9654; Tap to turn on</button>
@@ -300,7 +308,10 @@
         setInterval(() => {
             const watching = channels.length && !video.paused && !document.hidden && snow.classList.contains("hidden");
             if (!watching) { quality = null; drops = []; behindSince = 0; worst = 0; spell = false; nudged = false; lastSound = -1; return; }
-            const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+            // a browser that has the counts but never counts (a Samsung TV's says 0 frames shown) can't tell
+            // a stuck picture from a moving one, so it goes as one without them
+            let q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+            if (q && !q.totalVideoFrames && video.currentTime > 5) q = null;
             // behind: the sound's time less the last frame's; without frame times, a picture that hasn't
             // changed while the sound went on a second or more
             let behind = null;
@@ -1086,14 +1097,18 @@
             issue = n;
             document.querySelectorAll("[data-issue]").forEach(b => b.classList.toggle("on", Number(b.dataset.issue) === n));
             issueMsg.textContent = n === 5 ? "Say what's wrong, then Send" : "";
-            (n === 5 ? issueNote : document.getElementById("issueSend")).focus();
+            // a pick sends it (a TV remote's number, or OK on it), as one more step to Send was easy to miss on a TV;
+            // "something else" waits for what's wrong (the TV keyboard opens just for that one)
+            if (n === 5) issueNote.focus();
+            else send();
         }
         function choose(n) {
             if (n === 1 && !notListed) return showPanel("clipPanel"); // which one first (#90)
             pick = n;
             document.querySelectorAll("[data-pick]").forEach(b => b.classList.toggle("on", Number(b.dataset.pick) === n));
             reportMsg.textContent = n === 5 ? "Say what's wrong, then Send" : "";
-            (n === 5 ? note : document.getElementById("send")).focus(); // typing is optional, so the TV keyboard only opens for "something else"
+            if (n === 5) note.focus(); // the TV keyboard opens only for "something else"; the others send at once
+            else send();
         }
         async function send() {
             if (sending) return; // a second press while it goes (or after it's saved) would send it twice
@@ -1116,9 +1131,14 @@
                 const saved = await r.json();
                 if (!saved.number) throw new Error("not saved");
                 const off = onClip && issue === 1;
-                msg.textContent = off ? `Thanks! It will be off this box within a minute (report #${saved.number}).`
-                                      : `Thanks! Saved as report #${saved.number}.`;
-                setTimeout(closeMenu, off ? 2500 : 1500);
+                msg.textContent = "";
+                // a panel of its own, up long enough to read from across the room (it was a line that went in 1.5 s)
+                document.getElementById("sentMsg").textContent = off
+                    ? `Thanks! It will be off this box within a minute. Report #${saved.number}.`
+                    : `Thanks! Saved as report #${saved.number}.`;
+                showPanel("sentPanel");
+                const opened = openedAt;
+                setTimeout(() => { if (opened === openedAt && menuOpen() && shown().id === "sentPanel") closeMenu(); }, 8000);
             } catch (e) {
                 msg.textContent = "Couldn't send it; try again";
                 sendReady(button);
