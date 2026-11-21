@@ -288,13 +288,18 @@
         let quality = null, drops = [], behindSince = 0, worst = 0, spell = false, lastDropNote = 0, lastSound = -1;
         function pictureState() {
             const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
-            const ahead = video.buffered.length ? video.buffered.end(video.buffered.length - 1) - video.currentTime : 0;
+            const ahead = bufferAhead();
             const s = player && player.statisticsInfo, speed = s && s.speed ? ` net ${Math.round(s.speed)} KB/s` : "";
-            return `buffer ${ahead.toFixed(1)} s${speed}` + (q ? `, ${q.totalVideoFrames} frames shown, ${q.droppedVideoFrames} dropped` : "");
+            return `buffer ${ahead.toFixed(1)} s${speed}` + (q ? `, ${q.totalVideoFrames} frames shown, ${q.droppedVideoFrames} dropped` : "")
+                   + (video.playbackRate !== 1 ? `, playing at ${video.playbackRate}x` : "");
+        }
+        let nudged = false;
+        function bufferAhead() {
+            return video.buffered.length ? video.buffered.end(video.buffered.length - 1) - video.currentTime : 0;
         }
         setInterval(() => {
             const watching = channels.length && !video.paused && !document.hidden && snow.classList.contains("hidden");
-            if (!watching) { quality = null; drops = []; behindSince = 0; worst = 0; spell = false; lastSound = -1; return; }
+            if (!watching) { quality = null; drops = []; behindSince = 0; worst = 0; spell = false; nudged = false; lastSound = -1; return; }
             const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
             // behind: the sound's time less the last frame's; without frame times, a picture that hasn't
             // changed while the sound went on a second or more
@@ -307,10 +312,19 @@
                 worst = Math.max(worst, behind);
                 if (!behindSince) behindSince = Date.now();
                 else if (!spell) { spell = true; pictureNote(`picture ${behind.toFixed(1)} s behind the sound; ${pictureState()}`); }
+                // a picture stuck while the sound goes on and the stream keeps coming (a phone's decoder can
+                // stall at a clip's hand-off and stay stuck 10 s or more): seeking to where it is starts the
+                // decoding again from the last keyframe (one a second), so it's back in a moment. Once a spell.
+                else if (!nudged && Date.now() - behindSince >= 3000 && behind > 2 && bufferAhead() >= 1
+                         && q && quality && q.totalVideoFrames - quality.totalVideoFrames < 5) {
+                    nudged = true;
+                    video.currentTime = video.currentTime;
+                    pictureNote(`picture stuck; started its decoding again; ${pictureState()}`);
+                }
             } else if (behindSince) {
                 if (spell) pictureNote(`picture caught up after ${Math.round((Date.now() - behindSince) / 1000)} s `
                                        + `(at worst ${worst.toFixed(1)} s behind); ${pictureState()}`);
-                behindSince = 0; worst = 0; spell = false;
+                behindSince = 0; worst = 0; spell = false; nudged = false;
             }
             // frames dropped: over the last 5 seconds, a note at most every 30 s
             if (q && quality && q.totalVideoFrames >= quality.totalVideoFrames) {
