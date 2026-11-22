@@ -46,3 +46,25 @@ def test_gap_after_plan_plays_brb_until_block_end():
 
 def test_gap_without_brb_still_returns_nothing():
     assert _play_point({"network_type": "standard"}, START + datetime.timedelta(seconds=1798)) is None
+
+
+def _two_blocks():
+    first = SimpleNamespace(start_time=START, end_time=START + datetime.timedelta(minutes=30), title="first")
+    second = SimpleNamespace(start_time=first.end_time, end_time=first.end_time + datetime.timedelta(minutes=30),
+                             title="second")
+    manager = LiquidManager.__new__(LiquidManager)
+    manager.schedules = {"Toons": [first, second]}
+    manager.get_extents = lambda name: (first.start_time, second.end_time)
+    return manager, first, second
+
+
+def test_the_moment_one_block_ends_belongs_to_the_next():
+    # the old block's plan is used up then, so picking it gave no play point and 10s of Please Stand By
+    manager, first, second = _two_blocks()
+    assert manager.get_programming_block("Toons", first.end_time) is second
+    assert manager.get_programming_block("Toons", first.end_time - datetime.timedelta(milliseconds=1)) is first
+
+
+def test_the_very_end_of_the_schedule_is_still_its_last_block():
+    manager, _, second = _two_blocks()
+    assert manager.get_programming_block("Toons", second.end_time) is second

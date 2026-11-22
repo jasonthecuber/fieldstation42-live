@@ -160,10 +160,15 @@ class LiquidManager(object):
         # handle expected case
         else:
             # go through each block until we find the correct position (when > block start and < block end)
+            # a block's end is the next block's start, so the next block owns that moment
+            last = None
             for _block in self.schedules[network_name]:
-                if when >= _block.start_time and when <= _block.end_time:
+                if _block.start_time <= when < _block.end_time:
                     # this is it, no need to keep going
                     return _block
+                if _block.start_time <= when <= _block.end_time:
+                    last = _block
+            return last
 
     def _build_stream_point(self, station_conf, when):
         # get the station conf
