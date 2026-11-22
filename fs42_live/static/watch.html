@@ -928,7 +928,24 @@
             hideMenu();
             history.pushState({ back: 1 }, "");
         });
+        // a Samsung's browser keeps the arrows for its pointer, and OK clicks wherever that is, hidden or not.
+        // In the menu the highlight follows the pointer, so it shows what OK will press; and an OK while the
+        // pointer hasn't moved since the panel changed (left over Back, or off the box, as the panels differ
+        // in size) presses the highlighted line, as on a remote with arrows. OK that also comes as Enter counts once.
+        const tvBrowser = /Tizen|Web0S|webOS|SMART-TV|SmartTV/i.test(navigator.userAgent);
+        let pointerAt = "", panelPointer = "", pressedAt = 0;
+        menu.addEventListener("mousemove", e => {
+            pointerAt = `${e.clientX},${e.clientY}`;
+            if (pointerAt === panelPointer || typingNote()) return; // a remote button waking it, not a move
+            const b = e.target.closest?.("button, input");
+            if (b && b !== document.activeElement && !b.hidden) b.focus({ preventScroll: true });
+        });
+        // (and its press mustn't move the highlight to what's under it, the note box say, before the click)
+        menu.addEventListener("mousedown", e => {
+            if (tvBrowser && pointerAt === panelPointer && document.activeElement?.closest?.("#menu")) e.preventDefault();
+        }, true);
         function showPanel(id) {
+            panelPointer = pointerAt;
             panels.forEach(p => p.hidden = p.id !== id);
             if (id === "channelPanel") fillChannels();
             if (id === "reportPanel") startReport();
@@ -1145,7 +1162,13 @@
             }
         }
         menu.addEventListener("click", e => {
-            const b = e.target.closest?.("button");
+            let b = e.target.closest?.("button");
+            if (e.isTrusted && e.detail) { // the pointer's (or a tap's), not a key's
+                if (Date.now() - pressedAt < 600) return; // the same OK, already taken as Enter
+                pressedAt = Date.now();
+                const f = document.activeElement;
+                if (tvBrowser && pointerAt === panelPointer && f?.tagName === "BUTTON" && f.closest("#menu")) b = f;
+            }
             if (!b) { if (e.target === menu) closeMenu(); return; } // a tap outside the box closes it
             if (b.dataset.go) showPanel(b.dataset.go);
             else if ("close" in b.dataset) closeMenu();
@@ -1212,6 +1235,8 @@
                 next.focus();
                 next.scrollIntoView({ block: "nearest" });
             } else if (k === "Enter") {
+                if (Date.now() - pressedAt < 600) { e.preventDefault(); return true; } // the same OK, already taken as a click
+                pressedAt = Date.now();
                 if (typing) send(); else document.activeElement?.closest("#menu button")?.click();
             } else if (/^[0-9]$/.test(k) && !typing) {
                 const panel = shown().id;
