@@ -55,3 +55,17 @@ def test_the_hint_survives_the_catalog():
     original = schedule_hint.ShowHint("during Miami Vice")
     rebuilt = schedule_hint.HINT_KLASS_BY_TYPE["show"].fromJSON(original.toJSON())
     assert rebuilt.toJSON() == original.toJSON() and rebuilt.fits("miamivice")
+
+
+def test_a_missing_bumpers_stand_in_is_never_one_shows_own(monkeypatch):
+    from types import SimpleNamespace
+    from fs42_live import scheduled_source
+    plain = CatalogEntry("bump/Station ID.mp4", 8, "bump", hints=[], content_type="bump")
+    own = CatalogEntry("bump/pre/during miamivice/kron_1986_boat_1.mp4", 9, "bump",
+                       hints=[schedule_hint.ShowHint("during miamivice")], content_type="bump")
+    monkeypatch.setattr(scheduled_source.CatalogAPI, "get_entries", lambda station: [plain, own])
+    monkeypatch.setattr(scheduled_source.os.path, "exists", lambda p: True)
+    gone = SimpleNamespace(content_type="bump")
+    me = SimpleNamespace(station={"network_name": "test"})
+    picks = {scheduled_source.ScheduledSource._stand_in(me, gone, 9).path for _ in range(30)}
+    assert picks == {plain.path}

@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from fs42.catalog_api import CatalogAPI
 from fs42.liquid_manager import LiquidManager
+from fs42.schedule_hint import ShowHint
 from fs42.station_manager import StationManager
 from fs42_live import bars, captions, hwaccel, logos, loudness, messages, panscan, up_next
 from fs42_live.profile import RETRO
@@ -171,7 +172,8 @@ class ScheduledSource:
             return None
         try:
             have = [e for e in CatalogAPI.get_entries(self.station)
-                    if e.content_type == entry.content_type and e.duration >= 1 and os.path.exists(e.path)]
+                    if e.content_type == entry.content_type and e.duration >= 1 and os.path.exists(e.path)
+                    and not any(isinstance(h, ShowHint) for h in e.hints or ())]  # not one show's own (#112)
         except Exception:
             return None
         if not have:
