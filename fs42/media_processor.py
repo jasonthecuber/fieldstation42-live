@@ -351,6 +351,8 @@ class MediaProcessor:
         if bumpdir:
             if schedule_hint.BumpHint.test_pattern(base):
                 hints.append(schedule_hint.BumpHint(base))
+            if schedule_hint.ShowHint.test_pattern(base):
+                hints.append(schedule_hint.ShowHint(base))
 
         return hints
 

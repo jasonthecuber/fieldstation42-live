@@ -91,6 +91,40 @@ class BumpHint:
     def fromJSON(json_data):
         return BumpHint(json_data["where"])
 
+
+class ShowHint:
+    """fs42_live: a bumper in a folder named "during <show>" (bump/pre/during miamivice) is only for
+    that show's breaks: a station's "Miami Vice will continue" card stays out of every other show.
+    The show is matched against the show's tag with case, spaces and punctuation ignored."""
+    pattern = re.compile(r"^during (.+)$", re.IGNORECASE)
+
+    def __init__(self, folder):
+        self.show = ShowHint.key(ShowHint.pattern.match(folder).group(1))
+        self.type = "show"
+
+    @staticmethod
+    def key(name):
+        return re.sub(r"[^a-z0-9]", "", str(name or "").lower())
+
+    @staticmethod
+    def test_pattern(to_test):
+        return bool(ShowHint.pattern.match(to_test))
+
+    def hint(self, when):
+        return True  # it's the show, not the time, that decides: find_bump checks that
+
+    def fits(self, show_tag):
+        return ShowHint.key(show_tag) == self.show
+
+    def __str__(self):
+        return f"during:{self.show}"
+
+    def toJSON(self):
+        return {"type": self.type, "show": self.show}
+
+    def fromJSON(json_data):
+        return ShowHint(f"during {json_data['show']}")
+
 class WeekNumberHint:
     pattern = re.compile("^week number ([1-9]|[1-4][0-9]|5[0-3])$", re.IGNORECASE)
     # meta_hints name the field explicitly, so they pass the number on its own
@@ -377,6 +411,7 @@ HINT_KLASS_BY_TYPE = {
     "day_part": DayPartHint,
     "day_of_week": DayofWeekHint,
     "bump": BumpHint,
+    "show": ShowHint,
     "week_number": WeekNumberHint,
     "custom_holiday": CustomHolidayHint,
 }

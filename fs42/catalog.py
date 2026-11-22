@@ -6,6 +6,7 @@ import sys
 import random
 from pathlib import Path
 
+from fs42 import schedule_hint
 from fs42.catalog_entry import CatalogEntry, MatchingContentNotFound, NoFillerContentFound
 from fs42.catalog_api import CatalogAPI
 from fs42.hint_agent import HintAgent
@@ -650,7 +651,11 @@ class ShowCatalog:
         candidates = [c for c in self.clip_index[base_tag]
                       if c.duration < seconds and c.duration >= 1
                       and MediaProcessor._test_candidate_hints(c.hints, when)]
-
+        # fs42_live: one show's own bumpers (a "during <show>" folder) only in that show's breaks;
+        # where the show isn't known (filling to the hour, between shows) they're left out
+        showing = lookahead[0] if lookahead else None
+        candidates = [c for c in candidates
+                      if all(h.fits(showing) for h in c.hints if isinstance(h, schedule_hint.ShowHint))]
 
         # now, filter candidates down
         meta_hints = self.config.get("meta_hints")
@@ -701,7 +706,7 @@ class ShowCatalog:
         # to plan at all
         try:
             return self.find_bump(seconds, when, position, bump_tag=bump_dir, lookahead=lookahead)
-        except NoFillerContentFound:
+        except (NoFillerContentFound, MatchingContentNotFound):  # or only another show's are left
             return None
 
     # makes blocks of reels in bump-commercial-commercial-bump format

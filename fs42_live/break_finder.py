@@ -38,8 +38,7 @@ SILENT = 0.3  # ...of which this much is also quiet
 SILENCE_DB = -40  # dB; fades often stop short of true silence
 SHORTEST_ACT = 180  # seconds between breaks
 STRONGER = 2  # of two fades closer than that, the earlier stays if it's black and quiet this many times longer
-OPENING = 300  # seconds; an episode found before that rule, with its first break this soon, is looked at again
-OPENINGS = "runtime/break_finder_openings.json"  # the episodes whose openings have been looked at again
+RECHECKED = "runtime/break_finder_rechecked.json"  # episodes found before that rule, looked at again with it
 EDGE = 20  # seconds; how close to the start or end a break may be (after a cold open, before the tag)
 FEWEST_BREAKS = 3  # fewer found isn't a pattern to trust...
 LONGEST_ACT = 960  # ...unless they leave no act longer than this
@@ -343,22 +342,26 @@ def _save_pending(names):
 
 def find_breaks(path, duration):
     points = [p for p, _ in _thin(_fades(path, duration), duration)]
+    return points if _trusted(points, duration) else []
+
+
+def _trusted(points, duration):
     edges = [0.0, *points, duration]
     longest = max(edges[i + 1] - edges[i] for i in range(len(edges) - 1))
-    return points if len(points) >= FEWEST_BREAKS or (points and longest <= LONGEST_ACT) else []
+    return len(points) >= FEWEST_BREAKS or (bool(points) and longest <= LONGEST_ACT)
 
 
-def _fades(path, duration, upto=None):
+def _fades(path, duration):
     """[(seconds, strength)]: the middle of each place that's black and quiet at once, and for how
-    long it's both. `upto`: only that many seconds from the start are looked at."""
+    long it's both."""
     log = subprocess.run(
-        ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats", *(["-t", f"{upto:.1f}"] if upto else []),
+        ["nice", "-n", "19", "ffmpeg", "-hide_banner", "-nostats",
          "-i", path, "-vf", f"blackdetect=d={BLACK}:pix_th=0.1:pic_th=0.95",
          "-af", f"silencedetect=n={SILENCE_DB}dB:d=0.1", "-f", "null", "-"],
         capture_output=True, text=True, errors="replace", check=True).stderr
     blacks = [(float(s), float(e)) for s, e in re.findall(r"black_start:([\d.]+) black_end:([\d.]+)", log)]
     starts = [float(s) for s in re.findall(r"silence_start: ([\d.]+)", log)]
-    ends = [float(e) for e in re.findall(r"silence_end: ([\d.]+)", log)] + [upto or duration]
+    ends = [float(e) for e in re.findall(r"silence_end: ([\d.]+)", log)] + [duration]
     silences = list(zip(starts, ends))
 
     fades = []
@@ -388,23 +391,24 @@ def _thin(fades, duration):
     return fades
 
 
-def recheck_openings():
+def recheck_episodes():
     """(stations to rebuild, whether any are left). Episodes scanned before _thin weighed one fade
     against another kept the later of two close ones, even a dark scene just after a clear fade
-    out of the teaser. Each one whose first break is in its first OPENING seconds has that much
-    looked at again, once; an earlier, clearly stronger fade there becomes the first break.
-    Episodes placed by a second look (LOOKED) are left as they are."""
+    out of the teaser, or a weak dip a couple of minutes after a clear fade to black. Each one is
+    looked at again, once; where an earlier fade is clearly stronger it takes the later one's place.
+    Only when the fresh look finds every stored break again and the count stays the same (the file
+    and the finder are as they were; nothing is added). Episodes placed by a second look (LOOKED)
+    are left as they are."""
     fluid = FluidBuilder()
     stations = [s for s in StationManager().stations if s.get("_has_catalog")]
     stored, looked = _stored(fluid), _looked()
     try:
-        with open(OPENINGS) as f:
+        with open(RECHECKED) as f:
             done = set(json.load(f))
     except (FileNotFoundError, ValueError):
         done = set()
     todo = [p for p, segments in stored.items()
-            if p not in done and p not in looked and len(segments) > 1
-            and segments[0]["chapter_end"] <= OPENING and os.path.isfile(p)]
+            if p not in done and p not in looked and len(segments) > 1 and os.path.isfile(p)]
     if not todo:
         return [], False
     soon = upcoming(stations, on_air=True)
@@ -413,9 +417,9 @@ def recheck_openings():
     pending, started, changed = _pending(), time.monotonic(), 0
 
     def save():
-        with open(OPENINGS + ".new", "w") as f:
+        with open(RECHECKED + ".new", "w") as f:
             json.dump(sorted(done), f)
-        os.replace(OPENINGS + ".new", OPENINGS)
+        os.replace(RECHECKED + ".new", RECHECKED)
 
     for i, path in enumerate(todo):
         if i and time.monotonic() - started >= REBUILD_EVERY:
@@ -423,19 +427,18 @@ def recheck_openings():
         segments = stored[path]
         points, duration = [s["chapter_end"] for s in segments[:-1]], segments[-1]["chapter_end"]
         try:
-            fades = _fades(path, duration, upto=points[0] + 5)
+            fades = _fades(path, duration)
         except (OSError, subprocess.CalledProcessError) as e:
             _l.warning(f"break finder: can't look again at {path}: {e}")
             fades = []
         done.add(path)
-        if fades and any(abs(p - points[0]) < 1 for p, _ in fades) and fades[0][0] < points[0] - 1:
-            # the rest stay as found: they're further on than the part looked at again
-            new = [p for p, _ in _thin(fades + [(p, float("inf")) for p in points[1:]], duration)]
-            if new != points and len(new) == len(points):  # the first break moves; none is added
+        if fades and all(any(abs(f - p) < 1 for f, _ in fades) for p in points):
+            new = [p for p, _ in _thin(list(fades), duration)]
+            if new != points and len(new) == len(points) and _trusted(new, duration):
                 store(fluid, path, as_segments(new, duration))
                 changed += 1
-                _l.info(f"break finder: {os.path.basename(path)}: first break now at {clock(new[0])} "
-                        f"(was {clock(points[0])}), a clearer fade")
+                moved = ", ".join(f"{clock(o)} to {clock(n)}" for o, n in zip(points, new) if o != n)
+                _l.info(f"break finder: {os.path.basename(path)}: break moved {moved}, a clearer fade")
                 playing = soon.get(path, (None, set()))[1] - pending
                 if playing:
                     pending |= playing
@@ -444,7 +447,7 @@ def recheck_openings():
                     return _named(stations, pending), i + 1 < len(todo)
     save()
     if changed:
-        _l.info(f"break finder: looked again at {len(done)} episodes' openings; {changed} first breaks moved")
+        _l.info(f"break finder: looked again at {len(done)} episodes; breaks moved in {changed}")
     return _named(stations, pending), any(p not in done for p in todo)
 
 

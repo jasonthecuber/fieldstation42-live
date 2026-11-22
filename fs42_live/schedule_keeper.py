@@ -20,7 +20,7 @@ from fs42.liquid_manager import LiquidManager
 from fs42.liquid_schedule import LiquidSchedule
 from fs42.sequence_api import SequenceAPI
 from fs42.station_manager import StationManager
-from fs42_live.break_finder import recheck_openings, rebuilt, scan_new_episodes
+from fs42_live.break_finder import recheck_episodes, rebuilt, scan_new_episodes
 from fs42.catalog import ShowCatalog
 from fs42_live.catalog_watcher import STATE_DIR, MergingCatalog, media_in, refresh_changed_catalogs, update
 from fs42_live import jellyfin_guide
@@ -109,8 +109,8 @@ async def keep_breaks_found():
         more = False
         try:
             replan, more = await asyncio.to_thread(scan_new_episodes)
-            if not replan and not more:  # new episodes first; then the openings found the old way, once
-                replan, more = await asyncio.to_thread(recheck_openings)
+            if not replan and not more:  # new episodes first; then those found the old way, once
+                replan, more = await asyncio.to_thread(recheck_episodes)
             if replan:
                 await asyncio.to_thread(rebuild, replan)
         except Exception:

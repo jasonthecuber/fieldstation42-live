@@ -82,6 +82,7 @@ class TestHintJSONRoundTrip:
             schedule_hint.DayPartHint("morning"),
             schedule_hint.DayofWeekHint("friday"),
             schedule_hint.BumpHint("pre"),
+            schedule_hint.ShowHint("during miamivice"),
             schedule_hint.WeekNumberHint("week number 44"),
             schedule_hint.CustomHolidayHint("aug_day"),
         ]
