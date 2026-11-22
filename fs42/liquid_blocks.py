@@ -105,6 +105,17 @@ class LiquidBlock:
 
         return merged_segments
 
+    def unmarked_break_count(self, catalog, diff):
+        # fs42_live (#120): a show with no chapters and no black spots wasn't made with places for ads.
+        # Left uncounted, every break_duration of spare time became its own break, so a 52-minute
+        # The Penguin got 8 breaks, one every 6 minutes. Give it about one break per 15 minutes of
+        # show instead (at least 3, so a sitcom still gets two in the middle); the last follows the show.
+        count = max(3, round(self.content_duration() / (3 * timings.MIN_5)))
+        break_duration = self.break_info.get("break_duration") or catalog.config.get("break_duration")
+        if break_duration and break_duration > 0:
+            count = min(count, max(1, int(diff / break_duration)))
+        return count
+
     def make_plan(self, catalog):
         # first, collect any reels (commercials and bumps) we might need to buffer to the requested duration
         diff = self.playback_duration() - self.content_duration()
@@ -167,16 +178,22 @@ class LiquidBlock:
             raise (ValueError(err))
 
         if diff > 2:
+            count = strict_count
+            if not break_points and count is None:
+                count = self.unmarked_break_count(catalog, diff)
             self.reel_blocks = catalog.make_reel_fill(
                 self.start_time,
                 diff,
                 commercial_dir=self.commercial_override,
                 bump_dir=self.bump_override,
-                strict_count=strict_count,
+                strict_count=count,
                 lookahead=self.lookahead,
                 break_strategy=self.break_strategy,
             )
-            
+            if count and strict_count is None and len(self.reel_blocks) > count:
+                # the leftover fill comes back as one more block; it belongs to the break after the show
+                self.reel_blocks = self.reel_blocks[:count - 1] + [JoinedReels(self.reel_blocks[count - 1:])]
+
         else:
             self.reel_blocks = []
 
@@ -383,3 +400,20 @@ class ReelBlock:
         if self.end_bump is not None:
             entries.append(BlockPlanEntry(self.end_bump.path, 0, self.end_bump.duration, content_type="bump", media_type=self.end_bump.media_type))
         return entries
+
+
+class JoinedReels(ReelBlock):
+    # fs42_live (#120): several reel blocks played as one break
+    def __init__(self, blocks):
+        super().__init__(None, [], None)
+        self.blocks = blocks
+
+    def __str__(self):
+        return f"JoinedReels: {self.duration} {len(self.blocks)}"
+
+    @property
+    def duration(self):
+        return sum(b.duration for b in self.blocks)
+
+    def make_plan(self):
+        return [e for b in self.blocks for e in b.make_plan()]
