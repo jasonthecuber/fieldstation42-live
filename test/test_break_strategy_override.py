@@ -44,6 +44,7 @@ def _show_segments(station_strategy, block_strategy):
     no_markers = MagicMock()
     no_markers.return_value.get_chapters.return_value = []
     no_markers.return_value.get_breaks.return_value = []
+    no_markers.return_value.get_cuts.return_value = []
     with patch("fs42.liquid_blocks.FluidBuilder", no_markers):
         block.make_plan(_catalog(station_strategy))
     segments, in_show = 0, False

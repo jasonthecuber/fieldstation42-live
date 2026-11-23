@@ -69,12 +69,13 @@ def test_the_last_act_stops_at_the_end_found():
     assert [(a.skip, a.duration) for a in acts] == [(0.0, 600.0), (600.0, 709.5)]
 
 
-def _finder(monkeypatch, stations, entries, found, ends, soon=None):
+def _finder(monkeypatch, stations, entries, found, ends, soon=None, cuts=None):
     looked, lengths, stored = [], {}, {}
     monkeypatch.setattr(end_finder, "FluidBuilder", lambda: None)
     monkeypatch.setattr(end_finder, "StationManager", lambda: NS(stations=stations))
     monkeypatch.setattr(end_finder, "CatalogAPI", NS(get_entries=lambda s: entries[s["network_name"]]))
     monkeypatch.setattr(end_finder, "_found", lambda f: dict(found))
+    monkeypatch.setattr(end_finder, "_cuts", lambda f: dict(cuts or {}))
     monkeypatch.setattr(end_finder, "_length", lambda f, p: 1500.0)
     monkeypatch.setattr(end_finder, "find_end", lambda p, d: looked.append(p) or (ends.get(p, d), "black"))
     monkeypatch.setattr(end_finder, "store", lambda f, p, e, d: stored.__setitem__(p, (e, d)))
@@ -123,3 +124,16 @@ def test_an_hour_of_looking_then_the_channels_are_planned(monkeypatch):
     monkeypatch.setattr(end_finder, "REBUILD_EVERY", 0)
     assert end_finder.find_ends() == ([a], True)
     assert looked == ["/e0"]
+
+
+def test_a_tape_with_its_old_ads_cut_plays_that_much_shorter(monkeypatch):
+    a = station("A")
+    # /t was already set to where it ends, then ad_finder cut 300 s; /u is new; /v was cut for another file
+    entries = {"A": [entry("/t", 1, duration=1490.0), entry("/u", 2), entry("/v", 3, duration=1490.0)]}
+    found = {"/t": (1490.0, 1500.0), "/u": (1490.0, 1500.0), "/v": (1490.0, 1500.0)}
+    cuts = {"/t": (1500.0, [(400.0, 500.0), (800.0, 1000.0)]), "/u": (1500.0, [(400.0, 500.0)]),
+            "/v": (1800.0, [(400.0, 500.0)])}
+    looked, lengths, stored = _finder(monkeypatch, [a], entries, found, {}, cuts=cuts)
+    assert end_finder.find_ends() == ([], False)
+    assert looked == []  # the ends found earlier stay
+    assert lengths == {1: 1190.0, 2: 1390.0}

@@ -44,6 +44,7 @@ def _segments(show_minutes, slot_minutes, breaks=None):
     fluid = MagicMock()
     fluid.return_value.get_chapters.return_value = []
     fluid.return_value.get_breaks.return_value = breaks or []
+    fluid.return_value.get_cuts.return_value = []
     with patch("fs42.liquid_blocks.FluidBuilder", fluid):
         block.make_plan(_catalog())
     segments, in_show = 0, False

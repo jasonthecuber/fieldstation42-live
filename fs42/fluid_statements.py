@@ -233,6 +233,23 @@ class FluidStatements:
         return None
 
     @staticmethod
+    def add_play_cuts(connection: sqlite3.Connection, path: str, cuts, duration: float):
+        """fs42_live (ad_finder): stretches [start, end] of a file `duration` long that don't play,
+        such as ads recorded with an old broadcast; [] when it has none"""
+        connection.execute("REPLACE INTO play_cuts VALUES(?, ?, ?, ?)",
+                           (path, json.dumps([[round(a, 3), round(b, 3)] for a, b in cuts]),
+                            duration, datetime.datetime.now()))
+        connection.commit()
+
+    @staticmethod
+    def get_play_cuts(connection: sqlite3.Connection, path: str, duration: float):
+        """The stretches a file `duration` long skips, oldest first; [] if none (or it was replaced)."""
+        row = connection.execute("SELECT cuts, duration FROM play_cuts WHERE path=?", (path,)).fetchone()
+        if row and abs(row[1] - duration) < 1:
+            return [tuple(c) for c in json.loads(row[0])]
+        return []
+
+    @staticmethod
     def init_db(connection: sqlite3.Connection):
         cursor = connection.cursor()
         cursor.execute("""CREATE TABLE IF NOT EXISTS file_meta (
@@ -274,6 +291,14 @@ class FluidStatements:
         cursor.execute("""CREATE TABLE IF NOT EXISTS play_ends (
                             path TEXT PRIMARY KEY,
                             end REAL,
+                            duration REAL,
+                            last_updated TIMESTAMP
+                            )
+                       """)
+
+        cursor.execute("""CREATE TABLE IF NOT EXISTS play_cuts (
+                            path TEXT PRIMARY KEY,
+                            cuts TEXT,
                             duration REAL,
                             last_updated TIMESTAMP
                             )

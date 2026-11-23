@@ -6,6 +6,7 @@ import os
 sys.path.append(os.getcwd())
 
 from fs42.fluid_statements import FluidStatements
+from fs42.play_cuts import clean, cut_total
 from fs42.media_processor import MediaProcessor
 from fs42.station_manager import StationManager
 
@@ -89,6 +90,27 @@ class FluidBuilder:
             return FluidStatements.get_play_end(connection, full_path, duration)
         finally:
             connection.close()
+
+    def get_play_cuts(self, full_path, duration):
+        connection = sqlite3.connect(self.db_path)
+        try:
+            return FluidStatements.get_play_cuts(connection, full_path, duration)
+        finally:
+            connection.close()
+
+    def get_cuts(self, full_path):
+        """The stretches a file skips (by the length it has now), cleaned; [] if none."""
+        cached = self.check_file_cache(full_path)
+        if not cached or not cached.duration:
+            return []
+        end = self.get_play_end(full_path, cached.duration) or cached.duration
+        return clean(self.get_play_cuts(full_path, cached.duration), end)
+
+    def get_play_length(self, full_path, duration):
+        """fs42_live: how long a file `duration` long plays: to where it really ends
+        (end_finder), less the stretches it skips (ad_finder)"""
+        end = self.get_play_end(full_path, duration) or duration
+        return end - cut_total(self.get_play_cuts(full_path, duration), end)
 
     def get_breaks(self, full_path):
         #fname = os.path.realpath(fname)

@@ -8,6 +8,7 @@ from fs42.reel_cutter import ReelCutter
 from fs42.block_plan import BlockPlanEntry
 from fs42.fluid_builder import FluidBuilder
 from fs42.media_processor import MediaProcessor
+from fs42.play_cuts import cut_spots, file_pieces
 
 
 class LiquidBlock:
@@ -122,9 +123,16 @@ class LiquidBlock:
 
         _fluid = FluidBuilder()
 
-        # Prefer chapter markers over black detection
-        break_points = _fluid.get_chapters(self.content.realpath)
-        if not break_points:
+        # fs42_live (ad_finder): a recording with its old ads in it skips them, and its breaks are
+        # where they were; it's planned in "content time", the file with those stretches taken out
+        cuts = _fluid.get_cuts(self.content.realpath)
+        if cuts:
+            break_points = [{"chapter_start": s} for s in cut_spots(cuts)
+                            if 60 < s < self.content_duration() - 60]
+        else:
+            # Prefer chapter markers over black detection
+            break_points = _fluid.get_chapters(self.content.realpath)
+        if not break_points and not cuts:
             # Fall back to black detection if no chapters
             break_points = _fluid.get_breaks(self.content.realpath)
 
@@ -226,6 +234,20 @@ class LiquidBlock:
             end_bump=self.end_bump,
             break_points=break_points,
         )
+        if cuts:
+            self.plan = self.skip_cuts(self.plan, cuts)
+
+    def skip_cuts(self, plan, cuts):
+        """Each piece of the show, planned in content time, as the pieces of the file that play."""
+        out = []
+        for e in plan:
+            if e.path != self.content.path or e.content_type != self.content.content_type:
+                out.append(e)
+                continue
+            for skip, dur in file_pieces(e.skip, e.duration, cuts):
+                out.append(BlockPlanEntry(e.path, skip, dur, is_stream=e.is_stream,
+                                          content_type=e.content_type, media_type=e.media_type))
+        return out
 
 
 class LiquidClipBlock(LiquidBlock):

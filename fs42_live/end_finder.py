@@ -12,6 +12,7 @@ under it that long. A file that would lose more than half isn't cut at all.
 """
 
 import datetime
+import json
 import logging
 import os
 import re
@@ -25,6 +26,7 @@ from fs42.catalog_io import CatalogIO
 from fs42.fluid_builder import FluidBuilder
 from fs42.fluid_statements import FluidStatements
 from fs42.media_processor import MediaProcessor
+from fs42.play_cuts import cut_total
 from fs42.station_manager import StationManager
 from fs42_live.break_finder import _named, upcoming
 
@@ -50,6 +52,7 @@ def find_ends():
     fluid = FluidBuilder()
     stations = [s for s in StationManager().stations if s.get("_has_catalog")]
     found = _found(fluid)
+    cuts = _cuts(fluid)
     todo, fixed = {}, 0
     for station in stations:
         for entry in CatalogAPI.get_entries(station):
@@ -58,12 +61,14 @@ def find_ends():
             path = entry.realpath or os.path.realpath(entry.path)
             if path in found:
                 end, whole = found[path]
-                if abs(entry.duration - whole) < 1:
-                    if end < whole:
-                        set_length([entry], end)
-                        fixed += 1
+                skips = _skips(cuts, path, whole)
+                plays = end - cut_total(skips, end)
+                if abs(entry.duration - plays) < 1:
                     continue
-                if abs(entry.duration - end) < 1:
+                if (abs(entry.duration - whole) < 1 or abs(entry.duration - end) < 1
+                        or abs(entry.duration - (whole - cut_total(skips, whole))) < 1):
+                    set_length([entry], plays)
+                    fixed += 1
                     continue
                 # another file under the same name: looked at again
             todo.setdefault(path, []).append(entry)
@@ -89,7 +94,7 @@ def find_ends():
         store(fluid, path, end, whole)
         if end < whole:
             cut += 1
-            set_length(todo[path], end)
+            set_length(todo[path], end - cut_total(_skips(cuts, path, whole), end))
             replan |= soon.get(path, (None, set()))[1]
             _l.info(f"end finder: {os.path.basename(path)}: stops {whole - end:.1f} s early ({why})")
     else:
@@ -144,6 +149,19 @@ def _found(fluid):
     """{path: (end, its length then)} for every file looked at."""
     with closing(sqlite3.connect(fluid.db_path)) as db:
         return {p: (e, d) for p, e, d in db.execute("SELECT path, end, duration FROM play_ends")}
+
+
+def _cuts(fluid):
+    """{path: (its length then, [stretches it skips])} for every file ad_finder looked at."""
+    with closing(sqlite3.connect(fluid.db_path)) as db:
+        return {p: (d, [tuple(x) for x in json.loads(c)])
+                for p, c, d in db.execute("SELECT path, cuts, duration FROM play_cuts")}
+
+
+def _skips(cuts, path, whole):
+    """The stretches a file `whole` long skips; [] if none were stored for that length."""
+    length, skips = cuts.get(path, (None, []))
+    return skips if length is not None and abs(length - whole) < 1 else []
 
 
 def _length(fluid, path):
