@@ -217,6 +217,22 @@ class FluidStatements:
         connection.commit()
 
     @staticmethod
+    def add_play_end(connection: sqlite3.Connection, path: str, end: float, duration: float):
+        """fs42_live (end_finder): where this file's picture and sound really end, for a file
+        `duration` long (a file replaced under the same name is looked at again)"""
+        connection.execute("REPLACE INTO play_ends VALUES(?, ?, ?, ?)",
+                           (path, end, duration, datetime.datetime.now()))
+        connection.commit()
+
+    @staticmethod
+    def get_play_end(connection: sqlite3.Connection, path: str, duration: float):
+        """Where a file `duration` long stops playing, if it ends before that; else None."""
+        row = connection.execute("SELECT end, duration FROM play_ends WHERE path=?", (path,)).fetchone()
+        if row and abs(row[1] - duration) < 1 and row[0] < duration:
+            return row[0]
+        return None
+
+    @staticmethod
     def init_db(connection: sqlite3.Connection):
         cursor = connection.cursor()
         cursor.execute("""CREATE TABLE IF NOT EXISTS file_meta (
@@ -251,6 +267,14 @@ class FluidStatements:
         cursor.execute("""CREATE TABLE IF NOT EXISTS chapter_points (
                             path TEXT REFERENCES file_meta(path) PRIMARY KEY,
                             points TEXT,
+                            last_updated TIMESTAMP
+                            )
+                       """)
+
+        cursor.execute("""CREATE TABLE IF NOT EXISTS play_ends (
+                            path TEXT PRIMARY KEY,
+                            end REAL,
+                            duration REAL,
                             last_updated TIMESTAMP
                             )
                        """)

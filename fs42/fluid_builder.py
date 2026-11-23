@@ -83,6 +83,13 @@ class FluidBuilder:
         finally:
             connection.close()
 
+    def get_play_end(self, full_path, duration):
+        connection = sqlite3.connect(self.db_path)
+        try:
+            return FluidStatements.get_play_end(connection, full_path, duration)
+        finally:
+            connection.close()
+
     def get_breaks(self, full_path):
         #fname = os.path.realpath(fname)
         connection = sqlite3.connect(self.db_path)

@@ -21,6 +21,7 @@ from fs42.liquid_schedule import LiquidSchedule
 from fs42.sequence_api import SequenceAPI
 from fs42.station_manager import StationManager
 from fs42_live.break_finder import recheck_episodes, rebuilt, scan_new_episodes
+from fs42_live.end_finder import find_ends
 from fs42.catalog import ShowCatalog
 from fs42_live.catalog_watcher import STATE_DIR, MergingCatalog, media_in, refresh_changed_catalogs, update
 from fs42_live import jellyfin_guide
@@ -119,7 +120,20 @@ async def keep_breaks_found():
             await asyncio.sleep(CHECK_EVERY)
 
 
-def rebuild(stations):
+async def keep_ends_found():
+    while True:
+        more = False
+        try:
+            replan, more = await asyncio.to_thread(find_ends)
+            if replan:
+                await asyncio.to_thread(rebuild, replan, "with shows that now end after their credits")
+        except Exception:
+            _l.exception("end finder: look failed")
+        if not more:  # with files left, it goes straight on
+            await asyncio.sleep(CHECK_EVERY)
+
+
+def rebuild(stations, why="with the new breaks"):
     """For schedules planned before their episodes' breaks were found. A channel is planned again
     from the end of what's on now, as replan does, so what's on the air isn't touched. One that
     can't be (not a standard channel, or nothing on now) is reset: each show rewinds to the
@@ -128,7 +142,7 @@ def rebuild(stations):
         manager = StationManager()
         for station in stations:
             name = station["network_name"]
-            _l.info(f"break finder: rebuilding {name}'s schedule with the new breaks")
+            _l.info(f"schedule keeper: rebuilding {name}'s schedule {why}")
             cut = _cut(station) if station.get("_has_schedule") and station["network_type"] == "standard" else None
             if cut:
                 _plan_ahead(manager.station_by_name(name) or station, manager)

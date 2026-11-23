@@ -11,6 +11,11 @@ class ReelCutter:
         
         if break_points:
             break_points = MediaProcessor.calc_black_segments(break_points, base_clip.duration)
+            # fs42_live: a file that ends before its last break point's end (end_finder cut off the
+            # black after the credits) stops there
+            end = base_clip.duration
+            break_points = [{**bp, "chapter_end": min(bp["chapter_end"], end)}
+                            for bp in break_points if bp["chapter_start"] < end - 1]
             #[print(x) for x in break_points]
 
         if start_bump:

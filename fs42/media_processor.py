@@ -175,6 +175,10 @@ class MediaProcessor:
                     _l.warning(f"Could not get duration for {fname}")
                 _l.warning("Files with 0 length can't be added to the catalog.")
             else:
+                if fluid and full_path and content_type in ("feature", "commercial"):
+                    # fs42_live (end_finder): it stops where the picture and sound really end, not
+                    # on the black or the silent card an uploader left after the credits
+                    duration = fluid.get_play_end(full_path, duration) or duration
                 # Detect media type from file extension
                 media_type = MediaProcessor.get_media_type(fname)
                 show_clip = CatalogEntry(fname, duration, tag, hints, content_type=content_type, media_type=media_type)
