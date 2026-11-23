@@ -53,3 +53,29 @@ def test_single_tag_slot_keeps_its_pick():
 def test_short_extras_dont_make_an_hour_show_a_half_hour_one():
     slot = {"random_tags": True, "tags": ["Caprica", "Cyberpunk"]}
     assert _schedule()._half_hour_tag(slot, "Caprica", 0, HALF) == ("Cyberpunk", 1)
+
+
+# A random slot's pick with nothing left (Noel, #122): The Monkees deleted, its name still in the list.
+
+def test_pick_with_nothing_left_becomes_another_of_the_list():
+    slot = {"random_tags": True, "tags": ["The Monkees", "Knight Rider", "The Monkees"]}
+    assert _schedule()._gone_pick(slot, "The Monkees", 0, HALF) == ("Knight Rider", 1)
+
+
+def test_pick_with_something_stays():
+    slot = {"random_tags": True, "tags": ["The Monkees", "Knight Rider"]}
+    assert _schedule()._gone_pick(slot, "Knight Rider", 1, HALF) == ("Knight Rider", 1)
+
+
+def test_clip_show_pick_stays():
+    slot = {"random_tags": True, "tags": ["Clips", "The Monkees"]}
+    assert _schedule()._gone_pick(slot, "Clips", 0, HALF) == ("Clips", 0)
+
+
+def test_list_with_nothing_left_keeps_its_pick_for_off_air():
+    slot = {"random_tags": True, "tags": ["The Monkees", "Gone Too"]}
+    assert _schedule()._gone_pick(slot, "The Monkees", 0, HALF) == ("The Monkees", 0)
+
+
+def test_single_tag_slot_keeps_a_pick_with_nothing_left():
+    assert _schedule()._gone_pick({"tags": "The Monkees"}, "The Monkees", None, HALF) == ("The Monkees", None)

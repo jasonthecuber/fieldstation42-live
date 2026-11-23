@@ -383,6 +383,23 @@ class LiquidSchedule:
         i = random.choice(halves)
         return tags[i], i
 
+    def _has_any(self, tag):
+        """fs42_live: whether a tag has anything to play (a clip show counts: it's played its own way)."""
+        return tag in self.conf["clip_shows"] or bool(self.catalog.get_all_by_tag(tag))
+
+    def _gone_pick(self, slot_config, tag_str, tag_index, when):
+        """fs42_live: a random slot's pick with nothing left (deleted, its name still in the list): another
+        of its tags that has something, so the hour isn't off the air for it (Noel, #122). The pick as it
+        was otherwise."""
+        tags = slot_config["tags"] if slot_config.get("random_tags") and isinstance(slot_config.get("tags"), list) else []
+        if not tags or self._has_any(tag_str):
+            return tag_str, tag_index
+        others = [i for i, t in enumerate(tags) if self._has_any(t) and not self._hinted_out(t, when)]
+        if not others:
+            return tag_str, tag_index
+        i = random.choice(others)
+        return tags[i], i
+
     def _half_hour(self, tag):
         """fs42_live: the tag's episodes run half an hour or less (most of them; short extras, like
         Caprica's music videos, don't count)."""
@@ -548,6 +565,9 @@ class LiquidSchedule:
                 else:
                     self._l.warning(f"[{self.conf['network_name']}] Nothing allowed today for tag={tag_str} at {current_mark} - off air")
                     tag_str = None
+
+            if tag_str is not None and "sequence" not in slot_config:
+                tag_str, tag_index = self._gone_pick(slot_config, tag_str, tag_index, current_mark)
 
             # fs42_live: an hour whose tag has nothing left (all of it deleted or taken off) is off the air,
             # not a stop - the channel shows its off-air video till something's put on
