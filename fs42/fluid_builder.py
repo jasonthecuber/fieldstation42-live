@@ -108,7 +108,8 @@ class FluidBuilder:
 
     def get_play_length(self, full_path, duration):
         """fs42_live: how long a file `duration` long plays: to where it really ends
-        (end_finder), less the stretches it skips (ad_finder)"""
+        (end_finder, uploader_cards), less the stretches it skips (ad_finder, and an uploader's
+        card at its start: uploader_cards)"""
         end = self.get_play_end(full_path, duration) or duration
         return end - cut_total(self.get_play_cuts(full_path, duration), end)
 

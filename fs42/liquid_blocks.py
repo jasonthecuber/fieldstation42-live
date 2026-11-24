@@ -8,7 +8,7 @@ from fs42.reel_cutter import ReelCutter
 from fs42.block_plan import BlockPlanEntry
 from fs42.fluid_builder import FluidBuilder
 from fs42.media_processor import MediaProcessor
-from fs42.play_cuts import cut_spots, file_pieces
+from fs42.play_cuts import cut_spots, file_pieces, in_content
 
 
 class LiquidBlock:
@@ -126,15 +126,16 @@ class LiquidBlock:
         # fs42_live (ad_finder): a recording with its old ads in it skips them, and its breaks are
         # where they were; it's planned in "content time", the file with those stretches taken out
         cuts = _fluid.get_cuts(self.content.realpath)
-        if cuts:
-            break_points = [{"chapter_start": s} for s in cut_spots(cuts)
-                            if 60 < s < self.content_duration() - 60]
-        else:
+        break_points = [{"chapter_start": s} for s in cut_spots(cuts)
+                        if 60 < s < self.content_duration() - 60]
+        if not break_points:
             # Prefer chapter markers over black detection
             break_points = _fluid.get_chapters(self.content.realpath)
-        if not break_points and not cuts:
-            # Fall back to black detection if no chapters
-            break_points = _fluid.get_breaks(self.content.realpath)
+            if not break_points:
+                # Fall back to black detection if no chapters
+                break_points = _fluid.get_breaks(self.content.realpath)
+            if cuts:  # only an uploader's card cut off its start or end: its own breaks, moved
+                break_points = in_content(break_points, cuts)
 
         strict_count = None
         if break_points:

@@ -243,11 +243,35 @@ class FluidStatements:
 
     @staticmethod
     def get_play_cuts(connection: sqlite3.Connection, path: str, duration: float):
-        """The stretches a file `duration` long skips, oldest first; [] if none (or it was replaced)."""
+        """The stretches a file `duration` long skips, oldest first; [] if none (or it was replaced).
+        An uploader's card at its start (uploader_cards) is one: from 0 to where the show starts."""
+        out = []
+        start = FluidStatements.get_play_start(connection, path, duration)
+        if start:
+            out.append((0.0, start))
         row = connection.execute("SELECT cuts, duration FROM play_cuts WHERE path=?", (path,)).fetchone()
         if row and abs(row[1] - duration) < 1:
-            return [tuple(c) for c in json.loads(row[0])]
-        return []
+            out += [tuple(c) for c in json.loads(row[0])]
+        return out
+
+    @staticmethod
+    def add_play_start(connection: sqlite3.Connection, path: str, start: float, duration: float):
+        """fs42_live (uploader_cards): where the show starts in a file `duration` long, after an
+        uploader's card; 0 when it has none (it was looked at)"""
+        connection.execute("REPLACE INTO play_starts VALUES(?, ?, ?, ?)",
+                           (path, start, duration, datetime.datetime.now()))
+        connection.commit()
+
+    @staticmethod
+    def get_play_start(connection: sqlite3.Connection, path: str, duration: float):
+        """Where a file `duration` long starts playing, if not at 0; else None."""
+        try:
+            row = connection.execute("SELECT start, duration FROM play_starts WHERE path=?", (path,)).fetchone()
+        except sqlite3.OperationalError:  # a DB from before play_starts
+            return None
+        if row and abs(row[1] - duration) < 1 and row[0] > 0:
+            return row[0]
+        return None
 
     @staticmethod
     def init_db(connection: sqlite3.Connection):
@@ -291,6 +315,14 @@ class FluidStatements:
         cursor.execute("""CREATE TABLE IF NOT EXISTS play_ends (
                             path TEXT PRIMARY KEY,
                             end REAL,
+                            duration REAL,
+                            last_updated TIMESTAMP
+                            )
+                       """)
+
+        cursor.execute("""CREATE TABLE IF NOT EXISTS play_starts (
+                            path TEXT PRIMARY KEY,
+                            start REAL,
                             duration REAL,
                             last_updated TIMESTAMP
                             )

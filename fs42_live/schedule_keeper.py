@@ -22,6 +22,7 @@ from fs42.sequence_api import SequenceAPI
 from fs42.station_manager import StationManager
 from fs42_live.break_finder import recheck_episodes, rebuilt, scan_new_episodes
 from fs42_live.end_finder import find_ends
+from fs42_live.uploader_cards import find_cards
 from fs42.catalog import ShowCatalog
 from fs42_live.catalog_watcher import STATE_DIR, MergingCatalog, media_in, refresh_changed_catalogs, update
 from fs42_live import jellyfin_guide
@@ -127,6 +128,10 @@ async def keep_ends_found():
             replan, more = await asyncio.to_thread(find_ends)
             if replan:
                 await asyncio.to_thread(rebuild, replan, "with shows that now end after their credits")
+            if not more:  # then an uploader's card on a show's start or end
+                replan, more = await asyncio.to_thread(find_cards)
+                if replan:
+                    await asyncio.to_thread(rebuild, replan, "with shows that play without an uploader's card")
         except Exception:
             _l.exception("end finder: look failed")
         if not more:  # with files left, it goes straight on

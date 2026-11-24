@@ -152,10 +152,16 @@ def _found(fluid):
 
 
 def _cuts(fluid):
-    """{path: (its length then, [stretches it skips])} for every file ad_finder looked at."""
+    """{path: (its length then, [stretches it skips])} for every file ad_finder looked at, and
+    every file that starts after an uploader's card (uploader_cards)."""
     with closing(sqlite3.connect(fluid.db_path)) as db:
-        return {p: (d, [tuple(x) for x in json.loads(c)])
-                for p, c, d in db.execute("SELECT path, cuts, duration FROM play_cuts")}
+        FluidStatements.init_db(db)
+        out = {p: (d, [tuple(x) for x in json.loads(c)])
+               for p, c, d in db.execute("SELECT path, cuts, duration FROM play_cuts")}
+        for p, start, d in db.execute("SELECT path, start, duration FROM play_starts WHERE start > 0"):
+            length, skips = out.get(p, (d, []))
+            out[p] = (d, [(0.0, start)] + skips) if abs(length - d) < 1 else (d, [(0.0, start)])
+        return out
 
 
 def _skips(cuts, path, whole):

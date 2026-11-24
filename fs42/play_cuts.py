@@ -53,6 +53,17 @@ def cut_spots(cuts):
     return spots
 
 
+def in_content(points, cuts):
+    """Break points found in the whole file (chapters, black) in content time; those that fall
+    inside a cut are dropped."""
+    out = []
+    for p in points or []:
+        s = to_content(p["chapter_start"], cuts)
+        if s is not None and not any(abs(s - q["chapter_start"]) < 0.01 for q in out):
+            out.append({"chapter_start": s})
+    return out
+
+
 def file_pieces(skip, duration, cuts):
     """A stretch of content time as (skip, duration) pieces of the file, jumping over cuts."""
     start, stop = skip, skip + duration
