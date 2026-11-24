@@ -35,6 +35,23 @@ def test_folder_of_only_extras_is_not_emptied(tmp_path):
     assert catalog_watcher.folders_emptied(top, before, set()) == ["Gone"]
 
 
+def test_emptied_on_purpose_is_a_real_removal(tmp_path, monkeypatch):
+    import json, time
+    monkeypatch.chdir(tmp_path)
+    os.makedirs("runtime/live_state")
+    os.makedirs("catalog/nbc/Promos")
+    os.makedirs("catalog/nbc/Gone")
+    with open(catalog_watcher.EMPTIED_NOTE, "w") as f:
+        json.dump({"catalog/nbc/Promos": time.time(), "catalog/pbs/Old": time.time() - 2 * 86400}, f)
+    before = {"catalog/nbc/Promos/a.mp4|1", "catalog/nbc/Gone/b.mkv|1"}
+    emptied = catalog_watcher.folders_emptied("catalog/nbc", before, set())
+    assert emptied == ["Gone", "Promos"]
+    assert catalog_watcher.emptied_on_purpose("catalog/nbc", emptied) == {"Promos"}
+    with open(catalog_watcher.EMPTIED_NOTE) as f:
+        assert json.load(f) == {}  # used up, and the day-old one dropped
+    assert catalog_watcher.emptied_on_purpose("catalog/nbc", emptied) == set()
+
+
 def test_player_log_file(tmp_path, monkeypatch):
     from fs42_live import router
     monkeypatch.setattr(router, "PLAYER_LOG", str(tmp_path / "player.log"))

@@ -12,6 +12,7 @@ New entries start at their tag's lowest play count, so they join the rotation ev
 import json
 import logging
 import os
+import time
 
 from fs42.catalog_api import CatalogAPI
 from fs42.catalog_entry import CatalogEntry
@@ -43,6 +44,8 @@ def refresh_changed_catalogs(keep_schedules=()):
             before = None  # first look: take the catalog as current
         if before is not None and now != before:
             emptied = folders_emptied(station["content_dir"], before, now)
+            meant = emptied_on_purpose(station["content_dir"], emptied)
+            emptied = [t for t in emptied if t not in meant]
             if emptied:
                 # most likely the drive or share behind them isn't mounted, not a real removal
                 _l.warning(f"catalog watcher: {name}: no files in {', '.join(emptied)}; leaving its catalog alone")
@@ -74,6 +77,34 @@ def folders_emptied(content_dir, before, now):
         return not any(not f.startswith(".") for _, _, files in os.walk(folder, followlinks=True) for f in files)
     return sorted(t for t in tags(before) - tags(now)
                   if os.path.lexists(os.path.join(content_dir, t)) and no_files(os.path.join(content_dir, t)))
+
+
+EMPTIED_NOTE = os.path.join(STATE_DIR, "emptied.json")  # Control Room's: {"catalog/<channel>/<tag>": when}
+EMPTIED_KEPT = 86400  # seconds a note waits for the watcher to see its folder empty
+
+
+def emptied_on_purpose(content_dir, tags):
+    """Those of tags that Control Room emptied itself (Media's Delete takes the links in them away
+    with what it deletes), so their files are really gone, not on a drive that isn't mounted.
+    Their notes are used up; notes older than EMPTIED_KEPT are dropped."""
+    try:
+        with open(EMPTIED_NOTE) as f:
+            notes = json.load(f)
+    except (OSError, ValueError):
+        return set()
+    if not isinstance(notes, dict):
+        notes = {}
+    key = lambda t: os.path.normpath(os.path.relpath(os.path.join(content_dir, t)))
+    meant = {t for t in tags if key(t) in notes}
+    now = time.time()
+    kept = {k: when for k, when in notes.items() if isinstance(when, (int, float)) and now - when < EMPTIED_KEPT
+            and k not in {key(t) for t in meant}}
+    if kept != notes:
+        tmp = f"{EMPTIED_NOTE}.new"
+        with open(tmp, "w") as f:
+            json.dump(kept, f)
+        os.replace(tmp, EMPTIED_NOTE)
+    return meant
 
 
 def media_in(content_dir, station=None):
