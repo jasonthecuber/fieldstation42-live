@@ -561,7 +561,39 @@ class ShowCatalog:
         else:
             return None
 
-    def find_candidate(self, tag, seconds, when, exclusion_index=None, proposed_start=None, meta_hints=None, avoid_recent=False):
+    # fs42_live: a folder of ads holding this file (a share like 0.2) gets that share of the picks
+    SHARE_FILE = ".fs42-share"
+
+    @classmethod
+    def _folder_share(cls, folder):
+        try:
+            with open(os.path.join(folder, cls.SHARE_FILE)) as f:
+                share = float(f.read().strip())
+            return share if 0 <= share <= 1 else None
+        except (OSError, ValueError):
+            return None
+
+    @classmethod
+    def _by_share(cls, matches):
+        """fs42_live: the ads to pick from this time. A folder with a share file (seasons.py writes one for
+        a season's ads) is picked from that share of the time, however many ads it holds, and the other ads
+        the rest of the time; if the side drawn has nothing that fits, the other side does."""
+        groups = {}
+        for m in matches:
+            groups.setdefault(os.path.dirname(m.path), []).append(m)
+        shares = {d: s for d in groups for s in [cls._folder_share(d)] if s is not None}
+        if not shares:
+            return matches
+        rest = [m for d, ms in groups.items() if d not in shares for m in ms]
+        r = random.random()
+        for d, share in sorted(shares.items()):
+            if r < share:
+                return groups[d]
+            r -= share
+        return rest or matches
+
+    def find_candidate(self, tag, seconds, when, exclusion_index=None, proposed_start=None, meta_hints=None, avoid_recent=False,
+                       shares=False):
         """Find the best candidate for a given tag and duration.
 
         exclusion_index: optional dict of {realpath: [(start, end), ...]} built from
@@ -604,6 +636,8 @@ class ShowCatalog:
             if not len(matches):
                 err = f"Could not find candidate video for tag={tag} under {seconds} in len - maybe add some shorter content?"
                 raise (MatchingContentNotFound(err))
+            if shares:
+                matches = self._by_share(matches)
             if avoid_recent:  # fs42_live: skip the clips played lately, if anything else fits
                 recent = self.__dict__.setdefault("_recent_clips", {}).setdefault(tag, [])
                 window = recent[-min(self.RECENT_CLIPS, len(candidates) // 2):] if len(candidates) > 1 else []
@@ -698,7 +732,7 @@ class ShowCatalog:
 
         if not len(self.clip_index[com_tag]):
             raise NoFillerContentFound(f"Can't find filler content in {com_tag} - please add commercials.")
-        return self.find_candidate(com_tag, seconds, when)
+        return self.find_candidate(com_tag, seconds, when, shares=True)
 
     def _bump_or_none(self, seconds, when, position, bump_dir, lookahead):
         # fs42_live: a channel whose bumpers were all taken off (or that has only a "Feature Presentation"

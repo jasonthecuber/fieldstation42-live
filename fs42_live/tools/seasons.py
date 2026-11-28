@@ -13,7 +13,7 @@ Seasons are described in <data>/seasons.json:
         "halloween": {
           "from": "10-19", "until": "11-01",
           "links": [
-            {"from": "commercials/halloween", "to": "primetime/commercial/halloween"},
+            {"from": "commercials/halloween", "to": "primetime/commercial/halloween", "share": 0.2},
             {"from": "specials/halloween", "to": "cartoons/halloween", "except": "Some Title"}
           ],
           "slots": {"cartoons": {"16": "halloween", "19": "halloween"}}
@@ -24,7 +24,8 @@ Seasons are described in <data>/seasons.json:
 
 Dates are "MM-DD" (every year) or "YYYY-MM-DD", and both ends are included. A link puts each file of a
 media folder ("only"/"except" filter on file names) into a folder under the catalog: a commercial folder for
-ads, or a folder of its own, which becomes a tag that slots can schedule. Slots override hours of a channel's
+ads, or a folder of its own, which becomes a tag that slots can schedule. An ad folder's "share" is the part of the breaks' ads that comes
+from it (0.2: one in five), however many ads it holds; without one, its ads are just more ads in the mix. Slots override hours of a channel's
 day templates (keyed by conf file name), on every day or on "days": ["saturday", ...]; later seasons win.
 
 When the set of seasons in force changes, it rewrites the links and day templates, rebuilds the channels
@@ -83,6 +84,39 @@ def sync_links(state, links, dry):
                     os.remove(name)
                 os.symlink(target, name)
     state["links"] = sorted(links)
+    return touched
+
+
+SHARE_FILE = ".fs42-share"  # (fs42/catalog.py's ShowCatalog.SHARE_FILE; this runs on the host, without fs42)
+
+
+def wanted_shares(data, seasons):
+    """{share file in a catalog folder of a season's ads: its share}, for the links that give one."""
+    return {f"{data}/catalog/{link['to']}/{SHARE_FILE}": float(link["share"])
+            for season in seasons for link in season.get("links", []) if "share" in link}
+
+
+def sync_shares(state, shares, dry):
+    """Writes the share files wanted and removes the ones of seasons now over; returns the folders touched."""
+    touched = set()
+    for name in state.get("shares", []):
+        if name not in shares and os.path.exists(name):
+            touched.add(os.path.dirname(name))
+            if not dry:
+                os.remove(name)
+    for name, share in shares.items():
+        try:
+            with open(name) as f:
+                have = f.read().strip()
+        except OSError:
+            have = None
+        if have != str(share):
+            touched.add(os.path.dirname(name))
+            if not dry:
+                os.makedirs(os.path.dirname(name), exist_ok=True)
+                with open(name, "w") as f:
+                    f.write(str(share))
+    state["shares"] = sorted(shares)
     return touched
 
 
@@ -150,7 +184,8 @@ def main():
     names = [n for n, s in config["seasons"].items() if in_season(s, today)]
     seasons = [config["seasons"][n] for n in names]
 
-    folders = sync_links(state, wanted_links(data, config["media_root"], seasons), dry)
+    folders = sync_shares(state, wanted_shares(data, seasons), dry)  # (first, so an ended season's folder empties)
+    folders |= sync_links(state, wanted_links(data, config["media_root"], seasons), dry)
     channels = sync_templates(data, state, seasons, dry)
     rebuild = affected(data, folders, channels) | set(state.get("pending", []))
     print(f"{today}: {', '.join(names) or 'no season'}; rebuilding {', '.join(sorted(rebuild)) or 'nothing'}")
